@@ -121,29 +121,20 @@ def select_sequence(idx: int):
         _reset_grid()
 
 
-def _make_start_frame():
-    """Build the initial current_nca_frame based on grid_init_mode."""
-    if grid_init_mode == "image_noisy":
-        return (init_frame + torch.randn_like(init_frame) * grid_init_noise).clamp(0, 1)
-    elif grid_init_mode == "noise":
-        return torch.rand(1, in_channels, *grid_size, device=device)
-    else:  # "image"
-        return init_frame.clone()
-
-
 def _reset_grid():
     """Reset grid and current_nca_frame from the current init mode."""
     global grid, current_nca_frame, current_frame_idx
     current_frame_idx = 0
     with torch.no_grad():
-        current_nca_frame = _make_start_frame()
         grid = model.decoder.init_grid(
             batch_size=1,
             grid_size=grid_size,
             device=device,
-            init_mode="image",
-            init_images=current_nca_frame,
+            init_mode=grid_init_mode,
+            init_images=init_frame,
+            noise_std=grid_init_noise,
         )
+        current_nca_frame = grid[:, :in_channels].clamp(0, 1).clone()
 
 
 def step_nca():
