@@ -489,12 +489,22 @@ def generate_dataset(
     frames_per_seq: int = 64,
     size: int = 32,
     output_dir: Path = None,
+    behavior: str = None,
 ) -> np.ndarray:
-    """Generate a dataset of boid sequences."""
+    """Generate a dataset of boid sequences.
+
+    Args:
+        num_sequences: Number of sequences to generate
+        frames_per_seq: Frames per sequence
+        size: Grid size
+        output_dir: Output directory (unused, kept for compatibility)
+        behavior: Specific behavior type ("flock", "predator_prey", "particle_life")
+                  or None for random mix
+    """
     sequences = []
 
     for i in tqdm(range(num_sequences), desc="Generating sequences"):
-        params = random_params(size)
+        params = random_params(size, behavior=behavior)
         sim = BoidSimulation(params)
         seq = sim.generate_sequence(frames_per_seq)
         sequences.append(seq)
@@ -645,6 +655,9 @@ def main():
                         help="Generate toy dataset (circle moving up) instead of boids. "
                              "Variations: fixed (identical), position (vary start), "
                              "speed (vary velocity), all (vary everything)")
+    parser.add_argument("--behavior", type=str, default=None,
+                        choices=["flock", "predator_prey", "particle_life"],
+                        help="Generate only a specific behavior type (default: random mix)")
     args = parser.parse_args()
 
     output_dir = Path(args.output_dir)
@@ -675,7 +688,9 @@ def main():
             anim = FuncAnimation(fig, update, frames=len(seq), interval=50)
             plt.show()
         else:
-            for behavior in ["flock", "predator_prey", "particle_life"]:
+            # Preview specific behavior or all behaviors
+            behaviors = [args.behavior] if args.behavior else ["flock", "predator_prey", "particle_life"]
+            for behavior in behaviors:
                 params = random_params(args.size, behavior=behavior)
                 sim = BoidSimulation(params)
 
@@ -715,13 +730,15 @@ def main():
         )
         output_file = output_dir / f"toy_circle_{args.toy}_{args.size}x{args.size}.npy"
     else:
-        print(f"Generating {args.num_sequences} boid sequences...")
+        behavior_str = args.behavior if args.behavior else "mixed"
+        print(f"Generating {args.num_sequences} {behavior_str} sequences...")
         data = generate_dataset(
             args.num_sequences,
             frames_per_seq=args.frames_per_seq,
             size=args.size,
+            behavior=args.behavior,
         )
-        output_file = output_dir / f"boids_{args.size}x{args.size}.npy"
+        output_file = output_dir / f"boids_{behavior_str}_{args.size}x{args.size}.npy"
 
     np.save(output_file, data.astype(np.uint8))
 
