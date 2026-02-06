@@ -1,0 +1,1167 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neural Cellular Automata</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        h1 {
+            margin-bottom: 10px;
+            color: #4fc3f7;
+        }
+
+        .instructions {
+            margin-bottom: 20px;
+            text-align: center;
+            color: #aaa;
+            max-width: 700px;
+            line-height: 1.5;
+        }
+
+        .instructions kbd {
+            background: #0f3460;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+
+        .container {
+            display: flex;
+            gap: 30px;
+            align-items: flex-start;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+
+        #canvas {
+            border: 2px solid #4fc3f7;
+            background: #000;
+            cursor: grab;
+        }
+
+        #canvas:active {
+            cursor: grabbing;
+        }
+
+        .controls {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            min-width: 340px;
+            max-width: 370px;
+        }
+
+        .controls h2 {
+            margin-bottom: 15px;
+            color: #4fc3f7;
+            font-size: 1.2em;
+        }
+
+        .section-label {
+            color: #aaa;
+            font-size: 0.9em;
+            margin-bottom: 8px;
+        }
+
+        /* Layer selector */
+        .layer-selector {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .layer-btn {
+            flex: 1;
+            padding: 10px;
+            border: 2px solid #0f3460;
+            background: #0f3460;
+            color: #aaa;
+            border-radius: 6px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.15s;
+        }
+
+        .layer-btn.active {
+            border-color: #4fc3f7;
+            background: #1a4a7a;
+            color: #fff;
+        }
+
+        .layer-btn:hover {
+            background: #1a4a7a;
+        }
+
+        /* Neighbor selector grid */
+        .neighbor-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+            margin-bottom: 15px;
+        }
+
+        .neighbor-cell {
+            background: #0f3460;
+            border: 2px solid #1a1a2e;
+            border-radius: 6px;
+            padding: 8px;
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.15s;
+        }
+
+        .neighbor-cell.center {
+            background: #1a1a2e;
+            border-color: #333;
+            cursor: default;
+        }
+
+        .neighbor-cell.selected {
+            border-color: #4fc3f7;
+            box-shadow: 0 0 10px rgba(79, 195, 247, 0.5);
+        }
+
+        .neighbor-cell .key {
+            font-size: 0.75em;
+            color: #888;
+        }
+
+        .neighbor-cell .label {
+            font-size: 0.8em;
+            color: #ccc;
+        }
+
+        /* Channel mixing matrix */
+        .channel-matrix-section {
+            margin-bottom: 15px;
+        }
+
+        .matrix-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .matrix-header .title {
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .matrix-labels {
+            display: grid;
+            grid-template-columns: 40px repeat(3, 1fr);
+            gap: 4px;
+            margin-bottom: 4px;
+        }
+
+        .matrix-labels span {
+            text-align: center;
+            font-size: 0.75em;
+            color: #888;
+        }
+
+        .matrix-labels .out-r { color: #ff6b6b; }
+        .matrix-labels .out-g { color: #69db7c; }
+        .matrix-labels .out-b { color: #74c0fc; }
+
+        .channel-matrix {
+            display: grid;
+            grid-template-columns: 40px repeat(3, 1fr);
+            gap: 4px;
+        }
+
+        .matrix-row-label {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.75em;
+            font-weight: bold;
+        }
+
+        .in-r { color: #ff6b6b; }
+        .in-g { color: #69db7c; }
+        .in-b { color: #74c0fc; }
+
+        .channel-weight {
+            background: #0f3460;
+            border: 2px solid #1a1a2e;
+            border-radius: 4px;
+            padding: 6px 4px;
+            text-align: center;
+            font-family: monospace;
+            font-size: 0.85em;
+            transition: all 0.15s;
+        }
+
+        .channel-weight.active {
+            border-color: #ffd43b;
+            box-shadow: 0 0 8px rgba(255, 212, 59, 0.5);
+        }
+
+        .channel-weight .key {
+            font-size: 0.65em;
+            color: #666;
+            display: block;
+        }
+
+        .channel-weight .value {
+            font-weight: bold;
+        }
+
+        .channel-weight .value.positive { color: #4caf50; }
+        .channel-weight .value.negative { color: #f44336; }
+        .channel-weight .value.zero { color: #888; }
+
+        /* Activation section */
+        .activation-section {
+            background: #0f3460;
+            border-radius: 6px;
+            padding: 12px;
+            margin-bottom: 15px;
+        }
+
+        .activation-section .section-label {
+            margin-bottom: 10px;
+        }
+
+        .activation-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            margin-bottom: 8px;
+        }
+
+        .activation-row:last-child {
+            margin-bottom: 0;
+        }
+
+        .activation-row label {
+            font-size: 0.8em;
+            color: #aaa;
+            min-width: 50px;
+        }
+
+        .activation-row select {
+            flex: 1;
+            padding: 5px;
+            border-radius: 4px;
+            border: 1px solid #1a1a2e;
+            background: #16213e;
+            color: #eee;
+            font-size: 0.85em;
+        }
+
+        .activation-row input[type="range"] {
+            flex: 1;
+        }
+
+        .activation-row .val {
+            font-family: monospace;
+            font-size: 0.8em;
+            min-width: 40px;
+            text-align: right;
+        }
+
+        .buttons {
+            display: flex;
+            gap: 8px;
+            flex-wrap: wrap;
+            margin-bottom: 15px;
+        }
+
+        button {
+            background: #4fc3f7;
+            color: #1a1a2e;
+            border: none;
+            padding: 8px 14px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.85em;
+            transition: background 0.2s;
+        }
+
+        button:hover {
+            background: #81d4fa;
+        }
+
+        .randomize-options {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 15px;
+            font-size: 0.85em;
+            color: #aaa;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .randomize-options label {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .randomize-options input[type="range"] {
+            width: 80px;
+        }
+
+        .randomize-options input[type="checkbox"] {
+            width: 16px;
+            height: 16px;
+        }
+
+        .presets-section {
+            margin-bottom: 15px;
+        }
+
+        .presets-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 6px;
+        }
+
+        .preset-btn {
+            padding: 6px 8px;
+            font-size: 0.8em;
+            background: #0f3460;
+        }
+
+        .preset-btn:hover {
+            background: #1a4a7a;
+        }
+
+        .speed-control {
+            margin-bottom: 15px;
+        }
+
+        .speed-control label {
+            display: block;
+            margin-bottom: 5px;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .speed-control input {
+            width: 100%;
+        }
+
+        .blend-control {
+            margin-bottom: 15px;
+        }
+
+        .blend-control label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #aaa;
+            font-size: 0.9em;
+        }
+
+        .blend-control input {
+            flex: 1;
+        }
+
+        .blend-control .val {
+            font-family: monospace;
+            min-width: 35px;
+        }
+
+        .status {
+            padding: 10px;
+            background: #0f3460;
+            border-radius: 5px;
+            font-size: 0.85em;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            margin: 4px 0;
+        }
+
+        input[type="file"] {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <h1>Neural Cellular Automata</h1>
+    <p class="instructions">
+        <kbd>1</kbd>-<kbd>8</kbd> select neighbor |
+        <kbd>Q</kbd><kbd>W</kbd><kbd>E</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd><kbd>Z</kbd><kbd>X</kbd><kbd>C</kbd> adjust weights |
+        <kbd>Tab</kbd> switch layer<br>
+        Hold keys to vary weights. Scroll to zoom, drag to pan, double-click to reset view.
+    </p>
+
+    <div class="container">
+        <canvas id="canvas" width="1024" height="1024"></canvas>
+
+        <div class="controls">
+            <h2>Two-Layer Neural CA</h2>
+
+            <div class="layer-selector">
+                <button class="layer-btn active" data-layer="1">Layer 1</button>
+                <button class="layer-btn" data-layer="2">Layer 2</button>
+            </div>
+
+            <div class="section-label">Neighbor (1-8) for <span id="currentLayerLabel">Layer 1</span></div>
+            <div class="neighbor-grid">
+                <div class="neighbor-cell selected" data-neighbor="0">
+                    <div class="key">[1]</div>
+                    <div class="label">TL</div>
+                </div>
+                <div class="neighbor-cell" data-neighbor="1">
+                    <div class="key">[2]</div>
+                    <div class="label">T</div>
+                </div>
+                <div class="neighbor-cell" data-neighbor="2">
+                    <div class="key">[3]</div>
+                    <div class="label">TR</div>
+                </div>
+                <div class="neighbor-cell" data-neighbor="3">
+                    <div class="key">[4]</div>
+                    <div class="label">L</div>
+                </div>
+                <div class="neighbor-cell center">
+                    <div class="key"></div>
+                    <div class="label">X</div>
+                </div>
+                <div class="neighbor-cell" data-neighbor="4">
+                    <div class="key">[5]</div>
+                    <div class="label">R</div>
+                </div>
+                <div class="neighbor-cell" data-neighbor="5">
+                    <div class="key">[6]</div>
+                    <div class="label">BL</div>
+                </div>
+                <div class="neighbor-cell" data-neighbor="6">
+                    <div class="key">[7]</div>
+                    <div class="label">B</div>
+                </div>
+                <div class="neighbor-cell" data-neighbor="7">
+                    <div class="key">[8]</div>
+                    <div class="label">BR</div>
+                </div>
+            </div>
+
+            <div class="channel-matrix-section">
+                <div class="matrix-header">
+                    <span class="title">Channel Mixing (Neighbor <span id="selectedNeighbor">1</span>)</span>
+                </div>
+                <div class="matrix-labels">
+                    <span></span>
+                    <span class="out-r">→R</span>
+                    <span class="out-g">→G</span>
+                    <span class="out-b">→B</span>
+                </div>
+                <div class="channel-matrix">
+                    <div class="matrix-row-label in-r">R→</div>
+                    <div class="channel-weight" data-in="0" data-out="0">
+                        <span class="key">Q</span>
+                        <span class="value zero" id="cw-0-0">0.00</span>
+                    </div>
+                    <div class="channel-weight" data-in="0" data-out="1">
+                        <span class="key">W</span>
+                        <span class="value zero" id="cw-0-1">0.00</span>
+                    </div>
+                    <div class="channel-weight" data-in="0" data-out="2">
+                        <span class="key">E</span>
+                        <span class="value zero" id="cw-0-2">0.00</span>
+                    </div>
+
+                    <div class="matrix-row-label in-g">G→</div>
+                    <div class="channel-weight" data-in="1" data-out="0">
+                        <span class="key">A</span>
+                        <span class="value zero" id="cw-1-0">0.00</span>
+                    </div>
+                    <div class="channel-weight" data-in="1" data-out="1">
+                        <span class="key">S</span>
+                        <span class="value zero" id="cw-1-1">0.00</span>
+                    </div>
+                    <div class="channel-weight" data-in="1" data-out="2">
+                        <span class="key">D</span>
+                        <span class="value zero" id="cw-1-2">0.00</span>
+                    </div>
+
+                    <div class="matrix-row-label in-b">B→</div>
+                    <div class="channel-weight" data-in="2" data-out="0">
+                        <span class="key">Z</span>
+                        <span class="value zero" id="cw-2-0">0.00</span>
+                    </div>
+                    <div class="channel-weight" data-in="2" data-out="1">
+                        <span class="key">X</span>
+                        <span class="value zero" id="cw-2-1">0.00</span>
+                    </div>
+                    <div class="channel-weight" data-in="2" data-out="2">
+                        <span class="key">C</span>
+                        <span class="value zero" id="cw-2-2">0.00</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="activation-section">
+                <div class="section-label">Activation (<span id="activationLayerLabel">Layer 1</span>)</div>
+                <div class="activation-row">
+                    <label>Function</label>
+                    <select id="activationFunc">
+                        <option value="gaussian">Gaussian</option>
+                        <option value="relu">ReLU</option>
+                        <option value="leaky_relu">Leaky ReLU</option>
+                        <option value="tanh">Tanh</option>
+                        <option value="sigmoid">Sigmoid</option>
+                        <option value="sin">Sine</option>
+                        <option value="abs">Absolute</option>
+                        <option value="identity">Identity</option>
+                    </select>
+                </div>
+                <div class="activation-row">
+                    <label>Center</label>
+                    <input type="range" id="activationCenter" min="-1" max="1" step="0.05" value="0.5">
+                    <span class="val" id="activationCenterVal">0.50</span>
+                </div>
+                <div class="activation-row">
+                    <label>Width</label>
+                    <input type="range" id="activationWidth" min="0.05" max="2" step="0.05" value="0.15">
+                    <span class="val" id="activationWidthVal">0.15</span>
+                </div>
+            </div>
+
+            <div class="blend-control">
+                <label>
+                    <span>Blend:</span>
+                    <input type="range" id="blendFactor" min="0" max="1" step="0.05" value="0.9">
+                    <span class="val" id="blendVal">0.90</span>
+                </label>
+            </div>
+
+            <div class="buttons">
+                <button id="resetGrid">Reset Grid</button>
+                <button id="resetWeights">Zero All</button>
+                <button id="randomizeWeights">Random</button>
+                <button id="saveWeights">Save</button>
+                <button id="loadWeights">Load</button>
+                <input type="file" id="fileInput" accept=".json">
+            </div>
+
+            <div class="randomize-options">
+                <label>
+                    <span>Range: ±<span id="randomRangeValue">0.3</span></span>
+                    <input type="range" id="randomRange" min="0.05" max="1.0" step="0.05" value="0.3">
+                </label>
+                <label>
+                    <input type="checkbox" id="randomSparse" checked>
+                    Sparse
+                </label>
+            </div>
+
+            <div class="presets-section">
+                <div class="section-label">Presets</div>
+                <div class="presets-grid">
+                    <button class="preset-btn" data-preset="lenia">Lenia</button>
+                    <button class="preset-btn" data-preset="waves">Waves</button>
+                    <button class="preset-btn" data-preset="worms">Worms</button>
+                    <button class="preset-btn" data-preset="mitosis">Mitosis</button>
+                    <button class="preset-btn" data-preset="psyche">Psyche</button>
+                    <button class="preset-btn" data-preset="fire">Fire</button>
+                </div>
+            </div>
+
+            <div class="speed-control">
+                <label>Weight speed: <span id="speedValue">0.02</span></label>
+                <input type="range" id="speed" min="0.005" max="0.1" step="0.005" value="0.02">
+            </div>
+
+            <div class="status">
+                <div class="status-item">
+                    <span>Connection:</span>
+                    <span id="connStatus">Disconnected</span>
+                </div>
+                <div class="status-item">
+                    <span>Generated:</span>
+                    <span><span id="genFps">0</span> fps</span>
+                </div>
+                <div class="status-item">
+                    <span>Received:</span>
+                    <span><span id="recvFps">0</span> fps</span>
+                </div>
+                <div class="status-item">
+                    <span>Sim time:</span>
+                    <span><span id="simTime">0</span> ms</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const GRID_SIZE = 1024;
+
+        let ws = null;
+
+        // State
+        let state = {
+            layer1_weights: Array(8).fill(null).map(() => Array(3).fill(null).map(() => Array(3).fill(0))),
+            layer2_weights: Array(8).fill(null).map(() => Array(3).fill(null).map(() => Array(3).fill(0))),
+            layer1_activation: { func: 'gaussian', center: 0.5, width: 0.15 },
+            layer2_activation: { func: 'tanh', center: 0.0, width: 1.0 },
+            blend_factor: 0.9
+        };
+
+        let selectedLayer = 1;
+        let selectedNeighbor = 0;
+        let pressedKeys = new Set();
+        let weightSpeed = 0.02;
+        let frameCount = 0;
+        let lastFpsTime = Date.now();
+
+        // Zoom and pan state
+        let scale = 1;
+        let offsetX = 0;
+        let offsetY = 0;
+        let isDragging = false;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
+        const MIN_SCALE = 0.25;
+        const MAX_SCALE = 8;
+
+        // Create offscreen canvas for the grid image
+        const offscreenCanvas = document.createElement('canvas');
+        offscreenCanvas.width = GRID_SIZE;
+        offscreenCanvas.height = GRID_SIZE;
+        const offscreenCtx = offscreenCanvas.getContext('2d');
+        const imageData = offscreenCtx.createImageData(GRID_SIZE, GRID_SIZE);
+
+        // Key mappings
+        const neighborKeys = {'1': 0, '2': 1, '3': 2, '4': 3, '5': 4, '6': 5, '7': 6, '8': 7};
+        const channelKeys = {
+            'q': [0, 0], 'w': [0, 1], 'e': [0, 2],
+            'a': [1, 0], 's': [1, 1], 'd': [1, 2],
+            'z': [2, 0], 'x': [2, 1], 'c': [2, 2]
+        };
+
+        function getWeights(layer) {
+            return layer === 1 ? state.layer1_weights : state.layer2_weights;
+        }
+
+        function getActivation(layer) {
+            return layer === 1 ? state.layer1_activation : state.layer2_activation;
+        }
+
+        function connect() {
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            ws = new WebSocket(`${protocol}//${window.location.host}/ws`);
+
+            ws.onopen = () => {
+                document.getElementById('connStatus').textContent = 'Connected';
+                document.getElementById('connStatus').style.color = '#4caf50';
+            };
+
+            ws.onclose = () => {
+                document.getElementById('connStatus').textContent = 'Disconnected';
+                document.getElementById('connStatus').style.color = '#f44336';
+                setTimeout(connect, 1000);
+            };
+
+            ws.onmessage = async (event) => {
+                if (event.data instanceof Blob) {
+                    const buffer = await event.data.arrayBuffer();
+                    const gridData = new Uint8Array(buffer);
+                    renderGrid(gridData);
+                    updateFps();
+                } else {
+                    const data = JSON.parse(event.data);
+                    if (data.type === 'full_state') {
+                        state.layer1_weights = data.layer1_weights;
+                        state.layer2_weights = data.layer2_weights;
+                        state.layer1_activation = data.layer1_activation;
+                        state.layer2_activation = data.layer2_activation;
+                        state.blend_factor = data.blend_factor;
+                        updateAllUI();
+                    } else if (data.type === 'perf') {
+                        document.getElementById('genFps').textContent = data.gen_fps;
+                        document.getElementById('simTime').textContent = data.sim_ms;
+                    }
+                }
+            };
+        }
+
+        function renderGrid(gridData) {
+            const pixels = imageData.data;
+            const numPixels = GRID_SIZE * GRID_SIZE;
+
+            for (let i = 0; i < numPixels; i++) {
+                const srcIdx = i * 3;
+                const dstIdx = i * 4;
+                pixels[dstIdx] = gridData[srcIdx];
+                pixels[dstIdx + 1] = gridData[srcIdx + 1];
+                pixels[dstIdx + 2] = gridData[srcIdx + 2];
+                pixels[dstIdx + 3] = 255;
+            }
+
+            offscreenCtx.putImageData(imageData, 0, 0);
+
+            ctx.fillStyle = '#000';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.save();
+            ctx.translate(offsetX, offsetY);
+            ctx.scale(scale, scale);
+            ctx.imageSmoothingEnabled = false;
+            ctx.drawImage(offscreenCanvas, 0, 0);
+            ctx.restore();
+        }
+
+        function updateFps() {
+            frameCount++;
+            const now = Date.now();
+            if (now - lastFpsTime >= 1000) {
+                document.getElementById('recvFps').textContent = frameCount;
+                frameCount = 0;
+                lastFpsTime = now;
+            }
+        }
+
+        function updateAllUI() {
+            updateWeightDisplay();
+            updateActivationUI();
+            document.getElementById('blendFactor').value = state.blend_factor;
+            document.getElementById('blendVal').textContent = state.blend_factor.toFixed(2);
+        }
+
+        function updateWeightDisplay() {
+            const weights = getWeights(selectedLayer);
+            for (let i = 0; i < 3; i++) {
+                for (let o = 0; o < 3; o++) {
+                    const el = document.getElementById(`cw-${i}-${o}`);
+                    const val = weights[selectedNeighbor][i][o];
+                    el.textContent = val.toFixed(2);
+                    el.className = 'value ' + (val > 0.01 ? 'positive' : val < -0.01 ? 'negative' : 'zero');
+                }
+            }
+        }
+
+        function updateActivationUI() {
+            const act = getActivation(selectedLayer);
+            document.getElementById('activationFunc').value = act.func;
+            document.getElementById('activationCenter').value = act.center;
+            document.getElementById('activationCenterVal').textContent = act.center.toFixed(2);
+            document.getElementById('activationWidth').value = act.width;
+            document.getElementById('activationWidthVal').textContent = act.width.toFixed(2);
+        }
+
+        function selectLayer(layer) {
+            selectedLayer = layer;
+            document.querySelectorAll('.layer-btn').forEach(btn => {
+                btn.classList.toggle('active', parseInt(btn.dataset.layer) === layer);
+            });
+            document.getElementById('currentLayerLabel').textContent = `Layer ${layer}`;
+            document.getElementById('activationLayerLabel').textContent = `Layer ${layer}`;
+            updateWeightDisplay();
+            updateActivationUI();
+        }
+
+        function selectNeighbor(idx) {
+            selectedNeighbor = idx;
+            document.querySelectorAll('.neighbor-cell[data-neighbor]').forEach(el => {
+                el.classList.toggle('selected', parseInt(el.dataset.neighbor) === idx);
+            });
+            document.getElementById('selectedNeighbor').textContent = idx + 1;
+            updateWeightDisplay();
+        }
+
+        // Layer selection
+        document.querySelectorAll('.layer-btn').forEach(btn => {
+            btn.addEventListener('click', () => selectLayer(parseInt(btn.dataset.layer)));
+        });
+
+        // Neighbor selection via click
+        document.querySelectorAll('.neighbor-cell[data-neighbor]').forEach(el => {
+            el.addEventListener('click', () => selectNeighbor(parseInt(el.dataset.neighbor)));
+        });
+
+        // Key handling
+        document.addEventListener('keydown', (e) => {
+            const key = e.key.toLowerCase();
+
+            // Tab to switch layers
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                selectLayer(selectedLayer === 1 ? 2 : 1);
+                return;
+            }
+
+            // Neighbor selection
+            if (neighborKeys.hasOwnProperty(e.key)) {
+                selectNeighbor(neighborKeys[e.key]);
+                return;
+            }
+
+            // Channel weight adjustment
+            if (channelKeys.hasOwnProperty(key) && !pressedKeys.has(key)) {
+                pressedKeys.add(key);
+                const [inCh, outCh] = channelKeys[key];
+                document.querySelector(`.channel-weight[data-in="${inCh}"][data-out="${outCh}"]`)?.classList.add('active');
+            }
+        });
+
+        document.addEventListener('keyup', (e) => {
+            const key = e.key.toLowerCase();
+            if (channelKeys.hasOwnProperty(key)) {
+                pressedKeys.delete(key);
+                const [inCh, outCh] = channelKeys[key];
+                document.querySelector(`.channel-weight[data-in="${inCh}"][data-out="${outCh}"]`)?.classList.remove('active');
+            }
+        });
+
+        // Continuous weight update loop
+        function updateLoop() {
+            if (ws && ws.readyState === WebSocket.OPEN) {
+                for (const key of pressedKeys) {
+                    if (channelKeys.hasOwnProperty(key)) {
+                        const [inCh, outCh] = channelKeys[key];
+                        ws.send(JSON.stringify({
+                            type: 'update_weight',
+                            layer: selectedLayer,
+                            neighbor: selectedNeighbor,
+                            in_ch: inCh,
+                            out_ch: outCh,
+                            delta: weightSpeed
+                        }));
+                    }
+                }
+            }
+            requestAnimationFrame(updateLoop);
+        }
+
+        // Mouse event handlers for pan and zoom
+        canvas.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            lastMouseX = e.clientX;
+            lastMouseY = e.clientY;
+        });
+
+        canvas.addEventListener('mousemove', (e) => {
+            if (isDragging) {
+                offsetX += e.clientX - lastMouseX;
+                offsetY += e.clientY - lastMouseY;
+                lastMouseX = e.clientX;
+                lastMouseY = e.clientY;
+            }
+        });
+
+        canvas.addEventListener('mouseup', () => { isDragging = false; });
+        canvas.addEventListener('mouseleave', () => { isDragging = false; });
+
+        canvas.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const rect = canvas.getBoundingClientRect();
+            const mouseX = e.clientX - rect.left;
+            const mouseY = e.clientY - rect.top;
+            const zoomFactor = e.deltaY > 0 ? 0.9 : 1.1;
+            const newScale = Math.min(MAX_SCALE, Math.max(MIN_SCALE, scale * zoomFactor));
+            if (newScale !== scale) {
+                const scaleChange = newScale / scale;
+                offsetX = mouseX - (mouseX - offsetX) * scaleChange;
+                offsetY = mouseY - (mouseY - offsetY) * scaleChange;
+                scale = newScale;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('dblclick', () => {
+            scale = 1;
+            offsetX = 0;
+            offsetY = 0;
+        });
+
+        // Button handlers
+        document.getElementById('resetGrid').addEventListener('click', () => {
+            if (ws) ws.send(JSON.stringify({ type: 'reset' }));
+        });
+
+        document.getElementById('resetWeights').addEventListener('click', () => {
+            if (ws) ws.send(JSON.stringify({ type: 'reset_weights' }));
+        });
+
+        document.getElementById('speed').addEventListener('input', (e) => {
+            weightSpeed = parseFloat(e.target.value);
+            document.getElementById('speedValue').textContent = weightSpeed.toFixed(3);
+        });
+
+        // Activation controls
+        document.getElementById('activationFunc').addEventListener('change', (e) => {
+            if (ws) ws.send(JSON.stringify({
+                type: 'set_activation',
+                layer: selectedLayer,
+                func: e.target.value
+            }));
+        });
+
+        document.getElementById('activationCenter').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('activationCenterVal').textContent = val.toFixed(2);
+            if (ws) ws.send(JSON.stringify({
+                type: 'set_activation',
+                layer: selectedLayer,
+                center: val
+            }));
+        });
+
+        document.getElementById('activationWidth').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('activationWidthVal').textContent = val.toFixed(2);
+            if (ws) ws.send(JSON.stringify({
+                type: 'set_activation',
+                layer: selectedLayer,
+                width: val
+            }));
+        });
+
+        // Blend control
+        document.getElementById('blendFactor').addEventListener('input', (e) => {
+            const val = parseFloat(e.target.value);
+            document.getElementById('blendVal').textContent = val.toFixed(2);
+            if (ws) ws.send(JSON.stringify({ type: 'set_blend', value: val }));
+        });
+
+        // Randomize
+        document.getElementById('randomRange').addEventListener('input', (e) => {
+            document.getElementById('randomRangeValue').textContent = parseFloat(e.target.value).toFixed(2);
+        });
+
+        document.getElementById('randomizeWeights').addEventListener('click', () => {
+            const range = parseFloat(document.getElementById('randomRange').value);
+            const sparse = document.getElementById('randomSparse').checked;
+
+            const randomLayer = () => Array(8).fill(null).map(() =>
+                Array(3).fill(null).map(() =>
+                    Array(3).fill(0).map(() => {
+                        if (sparse && Math.random() < 0.5) return 0;
+                        return (Math.random() * 2 - 1) * range;
+                    })
+                )
+            );
+
+            if (ws) ws.send(JSON.stringify({
+                type: 'set_full_state',
+                layer1_weights: randomLayer(),
+                layer2_weights: randomLayer()
+            }));
+        });
+
+        // Save/Load
+        document.getElementById('saveWeights').addEventListener('click', () => {
+            const data = {
+                name: "Neural CA State",
+                timestamp: new Date().toISOString(),
+                ...state
+            };
+            const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `neural-ca-${Date.now()}.json`;
+            a.click();
+            URL.revokeObjectURL(url);
+        });
+
+        const fileInput = document.getElementById('fileInput');
+        document.getElementById('loadWeights').addEventListener('click', () => fileInput.click());
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                try {
+                    const data = JSON.parse(event.target.result);
+                    if (data.layer1_weights && data.layer2_weights) {
+                        ws.send(JSON.stringify({
+                            type: 'set_full_state',
+                            layer1_weights: data.layer1_weights,
+                            layer2_weights: data.layer2_weights,
+                            layer1_activation: data.layer1_activation,
+                            layer2_activation: data.layer2_activation,
+                            blend_factor: data.blend_factor
+                        }));
+                    } else {
+                        alert('Invalid state file format');
+                    }
+                } catch (err) {
+                    alert('Failed to parse file: ' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            fileInput.value = '';
+        });
+
+        // Presets
+        const presets = {
+            lenia: {
+                layer1_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = 0.12; w[n][1][1] = 0.12; w[n][2][2] = 0.12;
+                    }
+                    return w;
+                })(),
+                layer2_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = 0.15; w[n][1][1] = 0.15; w[n][2][2] = 0.15;
+                    }
+                    return w;
+                })(),
+                layer1_activation: { func: 'gaussian', center: 0.5, width: 0.15 },
+                layer2_activation: { func: 'gaussian', center: 0.35, width: 0.12 },
+                blend_factor: 0.85
+            },
+            waves: {
+                layer1_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        const sign = (n % 2 === 0) ? 1 : -1;
+                        w[n][0][0] = sign * 0.2;
+                        w[n][1][1] = sign * 0.2;
+                        w[n][2][2] = sign * 0.2;
+                    }
+                    return w;
+                })(),
+                layer2_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = 0.1; w[n][1][1] = 0.1; w[n][2][2] = 0.1;
+                    }
+                    return w;
+                })(),
+                layer1_activation: { func: 'sin', center: 0.0, width: 1.0 },
+                layer2_activation: { func: 'tanh', center: 0.5, width: 0.5 },
+                blend_factor: 0.9
+            },
+            worms: {
+                layer1_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    // Directional bias
+                    w[1][0][0] = 0.3; w[1][1][1] = 0.3; w[1][2][2] = 0.3;
+                    w[6][0][0] = -0.2; w[6][1][1] = -0.2; w[6][2][2] = -0.2;
+                    w[3][0][1] = 0.1; w[4][1][0] = 0.1;
+                    return w;
+                })(),
+                layer2_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = 0.08; w[n][1][1] = 0.08; w[n][2][2] = 0.08;
+                    }
+                    return w;
+                })(),
+                layer1_activation: { func: 'gaussian', center: 0.4, width: 0.2 },
+                layer2_activation: { func: 'leaky_relu', center: 0.3, width: 1.0 },
+                blend_factor: 0.92
+            },
+            mitosis: {
+                layer1_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = 0.15; w[n][1][1] = 0.15; w[n][2][2] = 0.15;
+                        w[n][0][1] = 0.02; w[n][1][2] = 0.02; w[n][2][0] = 0.02;
+                    }
+                    return w;
+                })(),
+                layer2_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = -0.1; w[n][1][1] = -0.1; w[n][2][2] = -0.1;
+                    }
+                    w[0][0][0] = 0.2; w[2][1][1] = 0.2; w[5][2][2] = 0.2; w[7][0][0] = 0.2;
+                    return w;
+                })(),
+                layer1_activation: { func: 'gaussian', center: 0.5, width: 0.1 },
+                layer2_activation: { func: 'gaussian', center: 0.4, width: 0.15 },
+                blend_factor: 0.88
+            },
+            psyche: {
+                layer1_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        const angle = (n / 8) * Math.PI * 2;
+                        w[n][0][1] = Math.sin(angle) * 0.2;
+                        w[n][1][2] = Math.sin(angle + Math.PI * 2/3) * 0.2;
+                        w[n][2][0] = Math.sin(angle + Math.PI * 4/3) * 0.2;
+                    }
+                    return w;
+                })(),
+                layer2_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = 0.1; w[n][1][1] = 0.1; w[n][2][2] = 0.1;
+                        w[n][1][0] = 0.05; w[n][2][1] = 0.05; w[n][0][2] = 0.05;
+                    }
+                    return w;
+                })(),
+                layer1_activation: { func: 'sin', center: 0.5, width: 0.8 },
+                layer2_activation: { func: 'tanh', center: 0.5, width: 0.6 },
+                blend_factor: 0.85
+            },
+            fire: {
+                layer1_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    // Heat rises
+                    w[0][0][0] = 0.2; w[1][0][0] = 0.3; w[2][0][0] = 0.2;
+                    w[5][0][0] = -0.1; w[6][0][0] = -0.15; w[7][0][0] = -0.1;
+                    // Red spreads to green/yellow
+                    w[1][0][1] = 0.15; w[6][1][0] = 0.1;
+                    // Some blue coolness
+                    w[3][2][2] = 0.1; w[4][2][2] = 0.1;
+                    return w;
+                })(),
+                layer2_weights: (() => {
+                    const w = Array(8).fill(null).map(() => [[0,0,0],[0,0,0],[0,0,0]]);
+                    for (let n = 0; n < 8; n++) {
+                        w[n][0][0] = 0.12;
+                        w[n][1][1] = 0.08;
+                        w[n][2][2] = 0.05;
+                    }
+                    return w;
+                })(),
+                layer1_activation: { func: 'relu', center: 0.2, width: 1.0 },
+                layer2_activation: { func: 'gaussian', center: 0.6, width: 0.3 },
+                blend_factor: 0.9
+            }
+        };
+
+        document.querySelectorAll('.preset-btn').forEach(btn => {
+            btn.addEventListener('click', () => {
+                const preset = presets[btn.dataset.preset];
+                if (preset && ws) {
+                    ws.send(JSON.stringify({
+                        type: 'set_full_state',
+                        ...preset
+                    }));
+                }
+            });
+        });
+
+        // Start
+        connect();
+        updateLoop();
+    </script>
+</body>
+</html>
