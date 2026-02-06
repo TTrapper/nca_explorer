@@ -541,6 +541,113 @@ class NCAAutoencoder(nn.Module):
         return torch.cat(frames, dim=0)
 
 
+class FrameDiscriminator(nn.Module):
+    """
+    Discriminator for judging whether frames are real or generated.
+    PatchGAN-style: outputs a grid of real/fake predictions.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 3,
+        hidden_dims: list[int] = [64, 128, 256],
+        use_spectral_norm: bool = True,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+
+        norm_fn = nn.utils.spectral_norm if use_spectral_norm else (lambda x: x)
+
+        layers = []
+        prev_channels = in_channels
+        for i, h_dim in enumerate(hidden_dims):
+            layers.append(norm_fn(nn.Conv2d(prev_channels, h_dim, 4, stride=2, padding=1)))
+            if i > 0:  # No norm on first layer
+                layers.append(nn.InstanceNorm2d(h_dim))
+            layers.append(nn.LeakyReLU(0.2))
+            prev_channels = h_dim
+
+        # Final conv to 1 channel (real/fake logits)
+        layers.append(norm_fn(nn.Conv2d(prev_channels, 1, 4, stride=1, padding=1)))
+
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Frames [B, C, H, W]
+        Returns:
+            Patch predictions [B, 1, H', W'] - logits (not sigmoid)
+        """
+        return self.model(x)
+
+
+class SequenceDiscriminator(nn.Module):
+    """
+    Discriminator for judging whether frame sequences have realistic dynamics.
+    Uses 3D convolutions to capture temporal patterns.
+    """
+
+    def __init__(
+        self,
+        in_channels: int = 3,
+        hidden_dims: list[int] = [32, 64, 128],
+        use_spectral_norm: bool = True,
+    ):
+        super().__init__()
+        self.in_channels = in_channels
+
+        norm_fn = nn.utils.spectral_norm if use_spectral_norm else (lambda x: x)
+
+        layers = []
+        prev_channels = in_channels
+        for i, h_dim in enumerate(hidden_dims):
+            # 3D conv: kernel (time=3, height=4, width=4)
+            layers.append(norm_fn(nn.Conv3d(
+                prev_channels, h_dim,
+                kernel_size=(3, 4, 4),
+                stride=(1, 2, 2),
+                padding=(1, 1, 1)
+            )))
+            if i > 0:
+                layers.append(nn.InstanceNorm3d(h_dim))
+            layers.append(nn.LeakyReLU(0.2))
+            prev_channels = h_dim
+
+        # Final conv
+        layers.append(norm_fn(nn.Conv3d(prev_channels, 1, kernel_size=(3, 4, 4), padding=(1, 1, 1))))
+
+        self.model = nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        """
+        Args:
+            x: Frame sequence [B, T, C, H, W]
+        Returns:
+            Sequence predictions [B, 1, T', H', W'] - logits
+        """
+        # Reshape to [B, C, T, H, W] for 3D conv
+        x = x.permute(0, 2, 1, 3, 4)
+        return self.model(x)
+
+
+def gan_loss_discriminator(real_preds: torch.Tensor, fake_preds: torch.Tensor) -> torch.Tensor:
+    """
+    Discriminator loss: classify real as 1, fake as 0.
+    Uses least-squares GAN loss for stability.
+    """
+    real_loss = torch.mean((real_preds - 1.0) ** 2)
+    fake_loss = torch.mean(fake_preds ** 2)
+    return 0.5 * (real_loss + fake_loss)
+
+
+def gan_loss_generator(fake_preds: torch.Tensor) -> torch.Tensor:
+    """
+    Generator loss: fool discriminator into classifying fake as real.
+    """
+    return torch.mean((fake_preds - 1.0) ** 2)
+
+
 def vae_loss(recon, target, mu, logvar, kl_weight: float = 0.001):
     """
     VAE loss = Reconstruction + KL divergence.
