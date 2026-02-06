@@ -31,6 +31,7 @@ current_frame_idx = 0
 context_frames_count = 4
 in_channels = 3
 grid_size = (32, 32)
+num_steps = 1  # NCA steps per frame (loaded from checkpoint)
 is_playing = True
 playback_speed = 1.0
 grid_init_mode = "image"  # "image", "image_noisy", or "noise"
@@ -46,7 +47,7 @@ app = FastAPI()
 
 def load_model(checkpoint_path: str, dev: str = "cpu"):
     """Load trained dynamics model from checkpoint."""
-    global model, device, context_frames_count, in_channels, grid_size
+    global model, device, context_frames_count, in_channels, grid_size, num_steps
 
     device = torch.device(dev)
     checkpoint = torch.load(checkpoint_path, map_location=device, weights_only=False)
@@ -56,6 +57,7 @@ def load_model(checkpoint_path: str, dev: str = "cpu"):
     context_frames_count = checkpoint.get("context_frames", args.get("context_frames", 4))
     in_channels = checkpoint.get("in_channels", args.get("in_channels", 3))
     grid_size = checkpoint.get("grid_size", args.get("grid_size", (32, 32)))
+    num_steps = checkpoint.get("num_steps", args.get("num_steps", 1))
     if isinstance(grid_size, list):
         grid_size = tuple(grid_size)
 
@@ -77,6 +79,7 @@ def load_model(checkpoint_path: str, dev: str = "cpu"):
     print(f"  Context frames: {context_frames_count}")
     print(f"  Channels: {in_channels}")
     print(f"  Grid size: {grid_size}")
+    print(f"  NCA steps per frame: {num_steps}")
 
     return model
 
@@ -138,10 +141,10 @@ def _reset_grid():
 
 
 def step_nca():
-    """Run one NCA step, matching training behavior.
+    """Run NCA steps for one frame, matching training behavior.
 
-    During training, each step re-initializes the grid from the previous
-    sigmoid output, runs 1 NCA step, then extracts sigmoid output.
+    During training, each frame prediction re-initializes the grid from the previous
+    sigmoid output, runs num_steps NCA steps, then extracts sigmoid output.
     Without this re-init, grid values grow unboundedly and diverge.
     """
     global grid, current_nca_frame
@@ -155,7 +158,9 @@ def step_nca():
             init_images=current_nca_frame,
         )
         layer1_w, layer1_b, layer2_w, layer2_b = nca_params
-        grid = model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
+        # Run num_steps NCA steps per frame (matches training)
+        for _ in range(num_steps):
+            grid = model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
         current_nca_frame = torch.sigmoid(grid[:, :in_channels])
 
 
@@ -540,7 +545,7 @@ HTML_CONTENT = """
         <p class="subtitle">Comparing ground truth simulation vs learned NCA dynamics</p>
 
         <div class="viewers">
-            <div class="viewer">
+            <div class="viewer" id="gtViewer">
                 <div class="viewer-label">Ground Truth</div>
                 <canvas id="gtCanvas" width="256" height="256"></canvas>
             </div>
@@ -550,25 +555,30 @@ HTML_CONTENT = """
             </div>
         </div>
 
-        <div class="context-section">
+        <div class="context-section" id="contextSection">
             <h3>Context Frames (Input to Encoder)</h3>
             <div class="context-frames" id="contextFrames"></div>
         </div>
 
         <div class="controls">
             <div class="control-row">
+                <button id="seqModeBtn" class="active-mode">Sequence</button>
+                <button id="latentModeBtn">Free Latent</button>
+            </div>
+
+            <div class="control-row">
                 <button id="playPauseBtn">Pause</button>
                 <button id="stepBtn">Step</button>
                 <button id="resetBtn">Reset</button>
             </div>
 
-            <div class="control-row">
+            <div class="control-row" id="seqControls">
                 <button id="prevSeqBtn">&lt; Prev</button>
                 <button id="randomSeqBtn">Random Sequence</button>
                 <button id="nextSeqBtn">Next &gt;</button>
             </div>
 
-            <div class="control-row">
+            <div class="control-row" id="latentControls" style="display:none">
                 <button id="randomLatentBtn">Random Latent</button>
                 <button id="perturbLatentBtn">Perturb Latent</button>
                 <div class="slider-group">
@@ -599,7 +609,7 @@ HTML_CONTENT = """
             </div>
 
             <div class="info">
-                <div>Sequence: <span id="seqNum">0</span> / <span id="totalSeq">0</span></div>
+                <div id="seqInfo">Sequence: <span id="seqNum">0</span> / <span id="totalSeq">0</span></div>
                 <div>Frame: <span id="frameNum">0</span></div>
                 <div>Latent: <span id="latentSource">encoded</span></div>
             </div>
@@ -621,6 +631,8 @@ HTML_CONTENT = """
         let width = 32, height = 32, channels = 3;
         let contextFramesCount = 4;
         let contextCanvases = [];
+        let currentMode = 'sequence';
+        let currentSeqIdx = 0;
 
         function createContextCanvases() {
             const container = document.getElementById('contextFrames');
@@ -675,6 +687,27 @@ HTML_CONTENT = """
             }
             ctx.putImageData(imageData, 0, 0);
         }
+
+        // Mode switching
+        function setMode(mode) {
+            currentMode = mode;
+            const isSeq = mode === 'sequence';
+            document.getElementById('gtViewer').style.display = isSeq ? '' : 'none';
+            document.getElementById('contextSection').style.display = isSeq ? '' : 'none';
+            document.getElementById('seqControls').style.display = isSeq ? '' : 'none';
+            document.getElementById('latentControls').style.display = isSeq ? 'none' : '';
+            document.getElementById('seqInfo').style.display = isSeq ? '' : 'none';
+            document.getElementById('seqModeBtn').classList.toggle('active-mode', isSeq);
+            document.getElementById('latentModeBtn').classList.toggle('active-mode', !isSeq);
+            if (!isSeq) {
+                if (ws) ws.send(JSON.stringify({ type: 'random_latent' }));
+            } else {
+                if (ws) ws.send(JSON.stringify({ type: 'select_sequence', index: currentSeqIdx }));
+            }
+        }
+
+        document.getElementById('seqModeBtn').addEventListener('click', () => setMode('sequence'));
+        document.getElementById('latentModeBtn').addEventListener('click', () => setMode('latent'));
 
         // Controls
         document.getElementById('playPauseBtn').addEventListener('click', () => {
@@ -792,10 +825,12 @@ HTML_CONTENT = """
                             contextFramesCount = data.context_frames;
                             document.getElementById('totalSeq').textContent = data.num_sequences;
                             document.getElementById('seqNum').textContent = data.current_seq;
+                            currentSeqIdx = data.current_seq;
                             createContextCanvases();
                         } else if (data.type === 'sequence_changed') {
                             document.getElementById('seqNum').textContent = data.current_seq;
                             document.getElementById('latentSource').textContent = 'encoded';
+                            currentSeqIdx = data.current_seq;
                         } else if (data.type === 'latent_changed') {
                             document.getElementById('latentSource').textContent = data.source;
                         } else if (data.type === 'init_mode_changed') {
@@ -822,11 +857,13 @@ HTML_CONTENT = """
                         // This is NCA frame
                         pendingNcaFrame = pixels;
                     } else {
-                        // This is GT frame
+                        // This is GT frame, completing the NCA+GT pair
                         if (pendingFrameHeader) {
                             const { w, h, c } = pendingFrameHeader;
                             renderFrame(ncaCtx, ncaCanvas, pendingNcaFrame, w, h, c);
-                            renderFrame(gtCtx, gtCanvas, pixels, w, h, c);
+                            if (currentMode === 'sequence') {
+                                renderFrame(gtCtx, gtCanvas, pixels, w, h, c);
+                            }
                         }
                         pendingNcaFrame = null;
                     }
