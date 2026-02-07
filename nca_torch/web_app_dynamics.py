@@ -396,6 +396,14 @@ async def websocket_endpoint(websocket: WebSocket):
                     apply_slot_selection()
                 await websocket.send_json(get_slots_state())
 
+            elif data["type"] == "play_slot":
+                idx = int(data["index"])
+                if latent_slots[idx] is not None:
+                    selected_slots.clear()
+                    selected_slots.add(idx)
+                    apply_slot_selection()
+                await websocket.send_json(get_slots_state())
+
             elif data["type"] == "clear_slot":
                 idx = int(data["index"])
                 latent_slots[idx] = None
@@ -642,15 +650,22 @@ HTML_CONTENT = """
         #connStatus.connected { color: #4caf50; }
         #connStatus.disconnected { color: #f44336; }
 
-        .latent-slots { display: flex; gap: 6px; flex-wrap: wrap; justify-content: center; }
-        .slot-btn {
-            width: 36px; height: 36px; border-radius: 5px;
-            border: 2px dashed #555; background: transparent;
-            color: #666; font-size: 0.8em; cursor: pointer;
-            padding: 0; font-weight: bold;
+        .piano-keyboard { position: relative; height: 120px; display: flex; justify-content: center; }
+        .piano-key {
+            position: relative; border: 1px solid #333; border-radius: 0 0 4px 4px;
+            cursor: pointer; display: flex; flex-direction: column;
+            justify-content: flex-end; align-items: center; padding-bottom: 4px;
+            font-size: 0.65em; font-weight: bold; user-select: none;
         }
-        .slot-btn.filled { border: 2px solid #4fc3f7; color: #4fc3f7; }
-        .slot-btn.selected { background: #4fc3f7; color: #1a1a2e; border-color: #81d4fa; box-shadow: 0 0 8px #4fc3f7; }
+        .piano-key.white { width: 44px; height: 110px; background: #556; color: #999; z-index: 1; }
+        .piano-key.black { width: 30px; height: 70px; background: #111; color: #666; z-index: 2; margin-left: -15px; margin-right: -15px; }
+        .piano-key.filled { color: #4fc3f7; }
+        .piano-key.filled.white { background: #668; }
+        .piano-key.filled.black { background: #224; }
+        .piano-key.selected.white { background: #4fc3f7; color: #1a1a2e; box-shadow: 0 0 10px #4fc3f7; }
+        .piano-key.selected.black { background: #4fc3f7; color: #1a1a2e; box-shadow: 0 0 10px #4fc3f7; }
+        .piano-key .note-name { font-size: 1.1em; }
+        .piano-key .key-hint { font-size: 0.9em; opacity: 0.5; }
 
         .latent-library-popup { position: absolute; background: #16213e; border: 2px solid #4fc3f7; border-radius: 8px; padding: 8px; z-index: 100; min-width: 180px; max-height: 250px; overflow-y: auto; }
         .lib-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; cursor: pointer; border-radius: 4px; color: #eee; }
@@ -709,9 +724,10 @@ HTML_CONTENT = """
                         <span class="value" id="perturbVal">0.10</span>
                     </div>
                 </div>
-                <div class="control-row" style="margin-top: 10px;">
-                    <div class="latent-slots" id="latentSlots"></div>
-                </div>
+            </div>
+
+            <div class="control-row" style="margin-top: 10px;">
+                <div class="piano-keyboard" id="pianoKeyboard"></div>
             </div>
 
             <div class="control-row">
@@ -877,9 +893,42 @@ HTML_CONTENT = """
             }
         });
 
-        // Latent slots
-        const slotButtons = [];
-        const slotContainer = document.getElementById('latentSlots');
+        // Piano keyboard latent slots
+        const NOTES = [
+            { note: 'F',  key: 'a', type: 'white', freq: 349.23 },
+            { note: 'F#', key: 'w', type: 'black', freq: 369.99 },
+            { note: 'G',  key: 's', type: 'white', freq: 392.00 },
+            { note: 'G#', key: 'e', type: 'black', freq: 415.30 },
+            { note: 'A',  key: 'd', type: 'white', freq: 440.00 },
+            { note: 'A#', key: 'r', type: 'black', freq: 466.16 },
+            { note: 'B',  key: 'f', type: 'white', freq: 493.88 },
+            { note: 'C',  key: 'g', type: 'white', freq: 523.25 },
+            { note: 'C#', key: 'y', type: 'black', freq: 554.37 },
+            { note: 'D',  key: 'h', type: 'white', freq: 587.33 },
+            { note: 'D#', key: 'u', type: 'black', freq: 622.25 },
+            { note: 'E',  key: 'j', type: 'white', freq: 659.25 },
+        ];
+        const keyToSlot = {};
+        NOTES.forEach((n, i) => { keyToSlot[n.key] = i; });
+
+        // Audio feedback — lazy AudioContext (browser requires user gesture)
+        let audioCtx = null;
+        function playTone(freq) {
+            if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = freq;
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            osc.stop(audioCtx.currentTime + 0.15);
+        }
+
+        const pianoKeys = [];
+        const pianoContainer = document.getElementById('pianoKeyboard');
         const filledSlots = new Set();
         const selectedSlots = new Set();
         let pendingSlotIndex = null;
@@ -887,11 +936,19 @@ HTML_CONTENT = """
         let libraryPopup = null;
 
         for (let i = 0; i < 12; i++) {
-            const btn = document.createElement('button');
-            btn.className = 'slot-btn';
-            btn.textContent = i + 1;
-            btn.addEventListener('click', () => {
+            const key = document.createElement('div');
+            key.className = 'piano-key ' + NOTES[i].type;
+            const noteName = document.createElement('div');
+            noteName.className = 'note-name';
+            noteName.textContent = NOTES[i].note;
+            const keyHint = document.createElement('div');
+            keyHint.className = 'key-hint';
+            keyHint.textContent = NOTES[i].key;
+            key.appendChild(noteName);
+            key.appendChild(keyHint);
+            key.addEventListener('click', () => {
                 if (!ws) return;
+                playTone(NOTES[i].freq);
                 if (filledSlots.has(i)) {
                     ws.send(JSON.stringify({ type: 'toggle_slot', index: i }));
                 } else {
@@ -899,16 +956,27 @@ HTML_CONTENT = """
                     ws.send(JSON.stringify({ type: 'list_library' }));
                 }
             });
-            btn.addEventListener('contextmenu', (e) => {
+            key.addEventListener('contextmenu', (e) => {
                 e.preventDefault();
                 if (!ws) return;
                 if (filledSlots.has(i)) {
                     ws.send(JSON.stringify({ type: 'clear_slot', index: i }));
                 }
             });
-            slotContainer.appendChild(btn);
-            slotButtons.push(btn);
+            pianoContainer.appendChild(key);
+            pianoKeys.push(key);
         }
+
+        // Keyboard shortcuts for playing slots
+        document.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+            if (e.repeat) return;
+            const idx = keyToSlot[e.key];
+            if (idx !== undefined && ws) {
+                playTone(NOTES[idx].freq);
+                ws.send(JSON.stringify({ type: 'play_slot', index: idx }));
+            }
+        });
 
         function updateSlotUI(filled, selected, names) {
             filledSlots.clear();
@@ -916,17 +984,17 @@ HTML_CONTENT = """
             filled.forEach(i => filledSlots.add(i));
             selected.forEach(i => selectedSlots.add(i));
             for (let i = 0; i < 12; i++) {
-                slotButtons[i].className = 'slot-btn'
+                pianoKeys[i].className = 'piano-key ' + NOTES[i].type
                     + (filledSlots.has(i) ? ' filled' : '')
                     + (selectedSlots.has(i) ? ' selected' : '');
-                slotButtons[i].title = (names && names[i]) ? names[i] : '';
+                pianoKeys[i].title = (names && names[i]) ? names[i] : '';
             }
             // Update latent source display
             if (selected.length > 1) {
                 document.getElementById('latentSource').textContent =
-                    'slots ' + selected.map(i => i + 1).join(',') + ' (interp)';
+                    'slots ' + selected.map(i => NOTES[i].note).join('+') + ' (interp)';
             } else if (selected.length === 1) {
-                document.getElementById('latentSource').textContent = 'slot ' + (selected[0] + 1);
+                document.getElementById('latentSource').textContent = NOTES[selected[0]].note;
             }
         }
 
@@ -973,8 +1041,8 @@ HTML_CONTENT = """
                 });
             }
 
-            // Position near the slots area
-            const slotsEl = document.getElementById('latentSlots');
+            // Position near the piano keyboard
+            const slotsEl = document.getElementById('pianoKeyboard');
             const rect = slotsEl.getBoundingClientRect();
             popup.style.left = rect.left + 'px';
             popup.style.top = (rect.bottom + 8) + 'px';
