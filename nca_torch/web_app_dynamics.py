@@ -692,11 +692,22 @@ HTML_CONTENT = """
         .piano-key .note-name { font-size: 1.1em; }
         .piano-key .key-hint { font-size: 0.9em; opacity: 0.5; }
 
-        .latent-library-popup { position: absolute; background: #16213e; border: 2px solid #4fc3f7; border-radius: 8px; padding: 8px; z-index: 100; min-width: 180px; max-height: 250px; overflow-y: auto; }
-        .lib-item { display: flex; justify-content: space-between; align-items: center; padding: 6px 8px; cursor: pointer; border-radius: 4px; color: #eee; }
+        .controls-with-library { display: flex; gap: 15px; justify-content: center; }
+        .controls-with-library > .controls { flex: 1; min-width: 0; }
+        .library-panel { background: #111827; border: 1px solid #333; border-radius: 8px; width: 200px; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; align-self: stretch; }
+        .library-header { padding: 8px 10px; font-size: 0.85em; font-weight: bold; color: #4fc3f7; border-bottom: 1px solid #333; }
+        .library-save-row { display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid #333; }
+        .library-save-row input { flex: 1; min-width: 0; background: #1a1a2e; border: 1px solid #555; border-radius: 4px; color: #eee; padding: 4px 8px; font-size: 0.8em; outline: none; }
+        .library-save-row input:focus { border-color: #4fc3f7; }
+        .library-save-row button { padding: 4px 10px; font-size: 0.8em; flex-shrink: 0; }
+        .library-list { overflow-y: auto; flex: 1; min-height: 40px; }
+        .lib-item { display: flex; align-items: center; padding: 5px 8px; cursor: grab; border-radius: 4px; color: #eee; gap: 6px; font-size: 0.85em; }
         .lib-item:hover { background: #2a2a4e; }
-        .lib-delete { color: #f44336; background: none; border: none; cursor: pointer; font-size: 1em; padding: 0 4px; width: auto; height: auto; }
+        .lib-item-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .lib-item-badge { background: #0e7490; color: #e0f7fa; font-size: 0.7em; padding: 1px 5px; border-radius: 8px; white-space: nowrap; }
+        .lib-delete { color: #f44336; background: none; border: none; cursor: pointer; font-size: 1em; padding: 0 4px; width: auto; height: auto; flex-shrink: 0; }
         .lib-empty { color: #888; padding: 8px; text-align: center; font-size: 0.85em; }
+        .piano-key.drag-over { outline: 2px dashed #4fc3f7; outline-offset: -2px; }
     </style>
 </head>
 <body>
@@ -720,53 +731,63 @@ HTML_CONTENT = """
             <div class="context-frames" id="contextFrames"></div>
         </div>
 
-        <div class="controls">
-            <div class="control-row">
-                <button id="seqModeBtn" class="active-mode">Sequence</button>
-                <button id="latentModeBtn">Free Latent</button>
+        <div class="controls-with-library">
+            <div class="library-panel" id="libraryPanel">
+                <div class="library-header">Latent Library</div>
+                <div class="library-save-row">
+                    <input type="text" id="libSaveInput" placeholder="Name..." />
+                    <button id="libSaveBtn">Save</button>
+                </div>
+                <div class="library-list" id="libraryList"></div>
             </div>
 
-            <div class="control-row">
-                <button id="playPauseBtn">Pause</button>
-                <button id="stepBtn">Step</button>
-                <button id="resetBtn">Reset</button>
-                <button id="saveLatentBtn">Save Latent</button>
-            </div>
-
-            <div class="control-row" id="seqControls">
-                <button id="prevSeqBtn">&lt; Prev</button>
-                <button id="randomSeqBtn">Random Sequence</button>
-                <button id="nextSeqBtn">Next &gt;</button>
-            </div>
-
-            <div id="latentControls" style="display:none">
+            <div class="controls">
                 <div class="control-row">
-                    <button id="randomLatentBtn">Random Latent</button>
-                    <button id="perturbLatentBtn">Perturb Latent</button>
-                    <div class="slider-group">
-                        <label>Perturb:</label>
-                        <input type="range" id="perturbSlider" min="0.01" max="1.0" step="0.01" value="0.1">
-                        <span class="value" id="perturbVal">0.10</span>
+                    <button id="seqModeBtn" class="active-mode">Sequence</button>
+                    <button id="latentModeBtn">Free Latent</button>
+                </div>
+
+                <div class="control-row">
+                    <button id="playPauseBtn">Pause</button>
+                    <button id="stepBtn">Step</button>
+                    <button id="resetBtn">Reset</button>
+                </div>
+
+                <div class="control-row" id="seqControls">
+                    <button id="prevSeqBtn">&lt; Prev</button>
+                    <button id="randomSeqBtn">Random Sequence</button>
+                    <button id="nextSeqBtn">Next &gt;</button>
+                </div>
+
+                <div id="latentControls" style="display:none">
+                    <div class="control-row">
+                        <button id="randomLatentBtn">Random Latent</button>
+                        <button id="perturbLatentBtn">Perturb Latent</button>
+                        <div class="slider-group">
+                            <label>Perturb:</label>
+                            <input type="range" id="perturbSlider" min="0.01" max="1.0" step="0.01" value="0.1">
+                            <span class="value" id="perturbVal">0.10</span>
+                        </div>
                     </div>
                 </div>
-            </div>
 
-            <div class="control-row" style="margin-top: 10px;">
-                <div class="piano-keyboard" id="pianoKeyboard"></div>
-            </div>
-
-            <div class="control-row">
-                <div class="slider-group">
-                    <label>Speed:</label>
-                    <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1">
-                    <span class="value" id="speedVal">1.0x</span>
+                <div class="control-row" style="margin-top: 10px;">
+                    <div class="piano-keyboard" id="pianoKeyboard"></div>
                 </div>
-            </div>
 
-            <div class="info">
-                <div id="seqInfo">Sequence: <span id="seqNum">0</span> / <span id="totalSeq">0</span></div>
-                <div>Frame: <span id="frameNum">0</span></div>
-                <div>Latent: <span id="latentSource">encoded</span></div>
+                <div class="control-row">
+                    <div class="slider-group">
+                        <label>Speed:</label>
+                        <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1">
+                        <span class="value" id="speedVal">1.0x</span>
+                    </div>
+                </div>
+
+                <div class="info">
+                    <div id="seqInfo">Sequence: <span id="seqNum">0</span> / <span id="totalSeq">0</span></div>
+                    <div>Frame: <span id="frameNum">0</span></div>
+                    <div>Latent: <span id="latentSource">encoded</span></div>
+                </div>
             </div>
         </div>
 
@@ -910,14 +931,6 @@ HTML_CONTENT = """
             document.getElementById('perturbVal').textContent = parseFloat(e.target.value).toFixed(2);
         });
 
-        // Save Latent button
-        document.getElementById('saveLatentBtn').addEventListener('click', () => {
-            const name = prompt('Name for this latent:');
-            if (name && name.trim() && ws) {
-                ws.send(JSON.stringify({ type: 'save_to_library', name: name.trim() }));
-            }
-        });
-
         // Piano keyboard latent slots
         const NOTES = [
             { note: 'F',  key: 'a', type: 'white', freq: 349.23 },
@@ -989,9 +1002,8 @@ HTML_CONTENT = """
         const pianoContainer = document.getElementById('pianoKeyboard');
         const filledSlots = new Set();
         const selectedSlots = new Set();
-        let pendingSlotIndex = null;
         let libraryNames = [];
-        let libraryPopup = null;
+        let slotNames = new Array(19).fill(null);
 
         for (let i = 0; i < NOTES.length; i++) {
             const key = document.createElement('div');
@@ -1009,9 +1021,6 @@ HTML_CONTENT = """
                 playTone(NOTES[i].freq);
                 if (filledSlots.has(i)) {
                     ws.send(JSON.stringify({ type: 'toggle_slot', index: i }));
-                } else {
-                    pendingSlotIndex = i;
-                    ws.send(JSON.stringify({ type: 'list_library' }));
                 }
             });
             key.addEventListener('contextmenu', (e) => {
@@ -1019,6 +1028,17 @@ HTML_CONTENT = """
                 if (!ws) return;
                 if (filledSlots.has(i)) {
                     ws.send(JSON.stringify({ type: 'clear_slot', index: i }));
+                }
+            });
+            // Drag-and-drop: accept latents from library panel
+            key.addEventListener('dragover', (e) => { e.preventDefault(); key.classList.add('drag-over'); });
+            key.addEventListener('dragleave', () => { key.classList.remove('drag-over'); });
+            key.addEventListener('drop', (e) => {
+                e.preventDefault();
+                key.classList.remove('drag-over');
+                const name = e.dataTransfer.getData('text/plain');
+                if (name && ws) {
+                    ws.send(JSON.stringify({ type: 'load_slot', index: i, name }));
                 }
             });
             pianoContainer.appendChild(key);
@@ -1036,6 +1056,7 @@ HTML_CONTENT = """
             }
         });
         document.addEventListener('keyup', (e) => {
+            if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             const idx = keyToSlot[e.key];
             if (idx !== undefined) {
                 stopTone(idx);
@@ -1048,11 +1069,12 @@ HTML_CONTENT = """
             selectedSlots.clear();
             filled.forEach(i => filledSlots.add(i));
             selected.forEach(i => selectedSlots.add(i));
+            if (names) slotNames = names;
             for (let i = 0; i < NOTES.length; i++) {
                 pianoKeys[i].className = 'piano-key ' + NOTES[i].type
                     + (filledSlots.has(i) ? ' filled' : '')
                     + (selectedSlots.has(i) ? ' selected' : '');
-                pianoKeys[i].title = (names && names[i]) ? names[i] : '';
+                pianoKeys[i].title = (slotNames[i]) ? slotNames[i] : '';
             }
             // Update latent source display
             if (selected.length > 1) {
@@ -1061,80 +1083,83 @@ HTML_CONTENT = """
             } else if (selected.length === 1) {
                 document.getElementById('latentSource').textContent = NOTES[selected[0]].note;
             }
+            renderLibraryPanel();
         }
 
-        // Library popup functions
-        function showLibraryPopup(names) {
-            const savedSlotIndex = pendingSlotIndex;
-            hideLibraryPopup();
-            pendingSlotIndex = savedSlotIndex;
-            const popup = document.createElement('div');
-            popup.className = 'latent-library-popup';
-
-            if (names.length === 0) {
+        // Render library panel list
+        function renderLibraryPanel() {
+            const list = document.getElementById('libraryList');
+            list.innerHTML = '';
+            // Build reverse map: latent name -> list of note names assigned to slots
+            const nameToNotes = {};
+            for (let i = 0; i < slotNames.length; i++) {
+                if (slotNames[i]) {
+                    if (!nameToNotes[slotNames[i]]) nameToNotes[slotNames[i]] = [];
+                    nameToNotes[slotNames[i]].push(NOTES[i].note);
+                }
+            }
+            if (libraryNames.length === 0) {
                 const empty = document.createElement('div');
                 empty.className = 'lib-empty';
-                empty.textContent = 'No saved latents. Use "Save Latent" first.';
-                popup.appendChild(empty);
-            } else {
-                names.forEach(name => {
-                    const item = document.createElement('div');
-                    item.className = 'lib-item';
-
-                    const label = document.createElement('span');
-                    label.textContent = name;
-                    label.style.flex = '1';
-                    label.addEventListener('click', () => {
-                        if (ws && pendingSlotIndex !== null) {
-                            ws.send(JSON.stringify({ type: 'load_slot', index: pendingSlotIndex, name }));
-                        }
-                        hideLibraryPopup();
-                    });
-
-                    const del = document.createElement('button');
-                    del.className = 'lib-delete';
-                    del.textContent = '\\u00d7';
-                    del.title = 'Delete from library';
-                    del.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        if (ws) ws.send(JSON.stringify({ type: 'delete_saved', name }));
-                    });
-
-                    item.appendChild(label);
-                    item.appendChild(del);
-                    popup.appendChild(item);
+                empty.textContent = 'No saved latents yet.';
+                list.appendChild(empty);
+                return;
+            }
+            libraryNames.forEach(name => {
+                const item = document.createElement('div');
+                item.className = 'lib-item';
+                item.draggable = true;
+                item.addEventListener('dragstart', (e) => {
+                    e.dataTransfer.setData('text/plain', name);
+                    e.dataTransfer.effectAllowed = 'copy';
+                    item.style.opacity = '0.5';
                 });
-            }
+                item.addEventListener('dragend', () => { item.style.opacity = ''; });
 
-            // Position near the piano keyboard
-            const slotsEl = document.getElementById('pianoKeyboard');
-            const rect = slotsEl.getBoundingClientRect();
-            popup.style.left = rect.left + 'px';
-            popup.style.top = (rect.bottom + 8) + 'px';
+                const nameSpan = document.createElement('span');
+                nameSpan.className = 'lib-item-name';
+                nameSpan.textContent = name;
+                item.appendChild(nameSpan);
 
-            document.body.appendChild(popup);
-            libraryPopup = popup;
+                // Note badges
+                if (nameToNotes[name]) {
+                    nameToNotes[name].forEach(note => {
+                        const badge = document.createElement('span');
+                        badge.className = 'lib-item-badge';
+                        badge.textContent = note;
+                        item.appendChild(badge);
+                    });
+                }
 
-            // Click-outside listener (delayed so current click doesn't dismiss)
-            setTimeout(() => {
-                document.addEventListener('click', outsideClickHandler, true);
-            }, 0);
+                const del = document.createElement('button');
+                del.className = 'lib-delete';
+                del.textContent = '\\u00d7';
+                del.title = 'Delete from library';
+                del.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (ws) ws.send(JSON.stringify({ type: 'delete_saved', name }));
+                });
+                item.appendChild(del);
+                list.appendChild(item);
+            });
         }
 
-        function hideLibraryPopup() {
-            if (libraryPopup) {
-                libraryPopup.remove();
-                libraryPopup = null;
-            }
-            pendingSlotIndex = null;
-            document.removeEventListener('click', outsideClickHandler, true);
-        }
-
-        function outsideClickHandler(e) {
-            if (libraryPopup && !libraryPopup.contains(e.target)) {
-                hideLibraryPopup();
+        // Inline save input wiring
+        const libSaveInput = document.getElementById('libSaveInput');
+        const libSaveBtn = document.getElementById('libSaveBtn');
+        function saveFromInput() {
+            const name = libSaveInput.value.trim();
+            if (name && ws) {
+                ws.send(JSON.stringify({ type: 'save_to_library', name }));
+                libSaveInput.value = '';
             }
         }
+        libSaveBtn.addEventListener('click', saveFromInput);
+        libSaveInput.addEventListener('keydown', (e) => {
+            e.stopPropagation();
+            if (e.key === 'Enter') saveFromInput();
+        });
+        libSaveInput.addEventListener('keyup', (e) => { e.stopPropagation(); });
 
         // WebSocket
         let pendingFrameHeader = null;
@@ -1147,8 +1172,9 @@ HTML_CONTENT = """
             ws.onopen = () => {
                 document.getElementById('connStatus').textContent = 'Connected';
                 document.getElementById('connStatus').className = 'connected';
-                // Request context frames
+                // Request context frames and library list
                 ws.send(JSON.stringify({ type: 'get_context' }));
+                ws.send(JSON.stringify({ type: 'list_library' }));
             };
 
             ws.onclose = () => {
@@ -1191,9 +1217,7 @@ HTML_CONTENT = """
                             updateSlotUI(data.filled, data.selected, data.names);
                         } else if (data.type === 'library_updated') {
                             libraryNames = data.names;
-                            if (pendingSlotIndex !== null) {
-                                showLibraryPopup(data.names);
-                            }
+                            renderLibraryPanel();
                         } else if (data.type === 'context_frames') {
                             const frames = data.frames;
                             for (let i = 0; i < frames.length && i < contextCanvases.length; i++) {
