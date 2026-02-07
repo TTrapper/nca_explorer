@@ -71,10 +71,6 @@ def get_args():
     parser.add_argument("--ss-warmup-epochs", type=int, default=10,
                         help="Epochs to linearly increase scheduled sampling probability")
 
-    # Init noise (helps NCA learn to start from noisy conditions)
-    parser.add_argument("--init-noise-std", type=float, default=0.1,
-                        help="Max noise std added to init grid (sampled uniformly from [0, this])")
-
     # Latent noise (helps fill in latent space)
     parser.add_argument("--latent-noise-std", type=float, default=0.0,
                         help="Noise std added to latent z during training (helps fill latent space)")
@@ -265,15 +261,11 @@ class DynamicsTrainer:
                 if self.args.latent_noise_std > 0:
                     z = z + torch.randn_like(z) * self.args.latent_noise_std
 
-                # Sample noise uniformly from [0, max_noise] to prevent identity shortcut.
-                decode_init_noise_std = torch.rand(1).item() * self.args.init_noise_std
-
                 pred = self.model.decode(
                     z,
                     num_steps=self.args.num_steps,
-                    init_mode="image_noisy",
+                    init_mode="image",
                     init_images=current_frame,
-                    init_noise_std=decode_init_noise_std,
                 )
 
                 all_preds.append(pred)

@@ -34,8 +34,7 @@ grid_size = (32, 32)
 num_steps = 1  # NCA steps per frame (loaded from checkpoint)
 is_playing = True
 playback_speed = 1.0
-grid_init_mode = "image"  # "image", "image_noisy", or "noise"
-grid_init_noise = 0.3
+grid_noise_blend = 0.0  # p value: grid = (1-p)*image + p*noise, 0=pure image, 1=pure noise
 
 # Current sequence data
 gt_sequence = None  # Ground truth frames
@@ -125,17 +124,24 @@ def select_sequence(idx: int):
 
 
 def _reset_grid():
-    """Reset grid and current_nca_frame from the current init mode."""
+    """Reset grid and current_nca_frame using interpolation between image and noise.
+
+    Uses: grid = (1-p)*image + p*noise, matching training regime.
+    """
     global grid, current_nca_frame, current_frame_idx
     current_frame_idx = 0
     with torch.no_grad():
+        # Interpolate between image and noise, matching training
+        p = grid_noise_blend
+        noise = torch.rand_like(init_frame)  # uniform noise in [0, 1]
+        blended_init = (1 - p) * init_frame + p * noise
+
         grid = model.decoder.init_grid(
             batch_size=1,
             grid_size=grid_size,
             device=device,
-            init_mode=grid_init_mode,
-            init_images=init_frame,
-            noise_std=grid_init_noise,
+            init_mode="image",
+            init_images=blended_init,
         )
         current_nca_frame = grid[:, :in_channels].clamp(0, 1).clone()
 
@@ -266,7 +272,7 @@ async def get_index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global is_playing, playback_speed, current_seq_idx, grid_init_mode, grid_init_noise
+    global is_playing, playback_speed, current_seq_idx, grid_noise_blend
 
     await websocket.accept()
 
@@ -305,12 +311,10 @@ async def websocket_endpoint(websocket: WebSocket):
             elif data["type"] == "set_speed":
                 playback_speed = data["speed"]
 
-            elif data["type"] == "set_init_mode":
-                grid_init_mode = data["mode"]
-                if "noise" in data:
-                    grid_init_noise = data["noise"]
+            elif data["type"] == "set_noise_blend":
+                grid_noise_blend = data["blend"]
                 reset_nca()
-                await websocket.send_json({"type": "init_mode_changed", "mode": grid_init_mode})
+                await websocket.send_json({"type": "noise_blend_changed", "blend": grid_noise_blend})
 
             elif data["type"] == "next_sequence":
                 select_sequence(current_seq_idx + 1)
@@ -589,14 +593,11 @@ HTML_CONTENT = """
             </div>
 
             <div class="control-row">
-                <span style="color:#aaa; font-size:0.9em;">Init grid:</span>
-                <button id="initImageBtn" class="active-mode">Image</button>
-                <button id="initNoisyBtn">Image+Noise</button>
-                <button id="initNoiseBtn">Noise</button>
                 <div class="slider-group">
-                    <label>Noise:</label>
-                    <input type="range" id="initNoiseSlider" min="0.05" max="1.0" step="0.05" value="0.3">
-                    <span class="value" id="initNoiseVal">0.30</span>
+                    <label>Noise blend:</label>
+                    <input type="range" id="noiseBlendSlider" min="0" max="1.0" step="0.05" value="0">
+                    <span class="value" id="noiseBlendVal">0.00</span>
+                    <span style="color:#888; font-size:0.8em;">(0=image, 1=noise)</span>
                 </div>
             </div>
 
@@ -755,31 +756,11 @@ HTML_CONTENT = """
             document.getElementById('perturbVal').textContent = parseFloat(e.target.value).toFixed(2);
         });
 
-        // Init mode buttons
-        const initModeButtons = {
-            'initImageBtn': 'image',
-            'initNoisyBtn': 'image_noisy',
-            'initNoiseBtn': 'noise',
-        };
-
-        function setInitMode(mode) {
-            const noise = parseFloat(document.getElementById('initNoiseSlider').value);
-            if (ws) ws.send(JSON.stringify({ type: 'set_init_mode', mode, noise }));
-        }
-
-        function updateInitModeButtons(mode) {
-            for (const [btnId, m] of Object.entries(initModeButtons)) {
-                const btn = document.getElementById(btnId);
-                btn.classList.toggle('active-mode', m === mode);
-            }
-        }
-
-        for (const [btnId, mode] of Object.entries(initModeButtons)) {
-            document.getElementById(btnId).addEventListener('click', () => setInitMode(mode));
-        }
-
-        document.getElementById('initNoiseSlider').addEventListener('input', (e) => {
-            document.getElementById('initNoiseVal').textContent = parseFloat(e.target.value).toFixed(2);
+        // Noise blend slider
+        document.getElementById('noiseBlendSlider').addEventListener('input', (e) => {
+            const blend = parseFloat(e.target.value);
+            document.getElementById('noiseBlendVal').textContent = blend.toFixed(2);
+            if (ws) ws.send(JSON.stringify({ type: 'set_noise_blend', blend }));
         });
 
         // WebSocket
@@ -833,8 +814,9 @@ HTML_CONTENT = """
                             currentSeqIdx = data.current_seq;
                         } else if (data.type === 'latent_changed') {
                             document.getElementById('latentSource').textContent = data.source;
-                        } else if (data.type === 'init_mode_changed') {
-                            updateInitModeButtons(data.mode);
+                        } else if (data.type === 'noise_blend_changed') {
+                            document.getElementById('noiseBlendSlider').value = data.blend;
+                            document.getElementById('noiseBlendVal').textContent = data.blend.toFixed(2);
                         } else if (data.type === 'context_frames') {
                             const frames = data.frames;
                             for (let i = 0; i < frames.length && i < contextCanvases.length; i++) {
