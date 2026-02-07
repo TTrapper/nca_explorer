@@ -34,7 +34,7 @@ grid_size = (32, 32)
 num_steps = 1  # NCA steps per frame (loaded from checkpoint)
 is_playing = True
 playback_speed = 1.0
-grid_noise_blend = 0.0  # p value: grid = (1-p)*image + p*noise, 0=pure image, 1=pure noise
+current_mode = 'sequence'  # 'sequence' or 'latent'
 
 # Latent slots
 latent_slots = [None] * 12      # List of saved latent tensors (or None)
@@ -115,7 +115,8 @@ def load_data(data_path: str):
 
 def select_sequence(idx: int):
     """Select a sequence and prepare for visualization."""
-    global current_seq_idx, gt_sequence, context_stacked, init_frame, grid, nca_params, current_z, current_nca_frame, current_frame_idx
+    global current_seq_idx, gt_sequence, context_stacked, init_frame, grid, nca_params, current_z, current_nca_frame, current_frame_idx, current_mode
+    current_mode = 'sequence'
 
     current_seq_idx = idx % dataset.num_sequences
     current_frame_idx = 0
@@ -142,24 +143,25 @@ def select_sequence(idx: int):
 
 
 def _reset_grid():
-    """Reset grid and current_nca_frame using interpolation between image and noise.
+    """Reset grid and current_nca_frame.
 
-    Uses: grid = (1-p)*image + p*noise, matching training regime.
+    Sequence mode: init from last context frame (pure image).
+    Free latent mode: init from pure noise.
     """
     global grid, current_nca_frame, current_frame_idx
     current_frame_idx = 0
     with torch.no_grad():
-        # Interpolate between image and noise, matching training
-        p = grid_noise_blend
-        noise = torch.rand_like(init_frame)  # uniform noise in [0, 1]
-        blended_init = (1 - p) * init_frame + p * noise
+        if current_mode == 'latent':
+            init_images = torch.rand(1, in_channels, *grid_size, device=device)
+        else:
+            init_images = init_frame
 
         grid = model.decoder.init_grid(
             batch_size=1,
             grid_size=grid_size,
             device=device,
             init_mode="image",
-            init_images=blended_init,
+            init_images=init_images,
         )
         current_nca_frame = grid[:, :in_channels].clamp(0, 1).clone()
 
@@ -195,7 +197,8 @@ def reset_nca():
 
 def apply_latent():
     """Regenerate NCA params from current_z and reinitialize the grid."""
-    global nca_params
+    global nca_params, current_mode
+    current_mode = 'latent'
     with torch.no_grad():
         nca_params = model.decoder.generate_params(current_z)
     _reset_grid()
@@ -319,7 +322,7 @@ async def get_index():
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
-    global is_playing, playback_speed, current_seq_idx, grid_noise_blend
+    global is_playing, playback_speed, current_seq_idx
 
     await websocket.accept()
 
@@ -357,11 +360,6 @@ async def websocket_endpoint(websocket: WebSocket):
 
             elif data["type"] == "set_speed":
                 playback_speed = data["speed"]
-
-            elif data["type"] == "set_noise_blend":
-                grid_noise_blend = data["blend"]
-                reset_nca()
-                await websocket.send_json({"type": "noise_blend_changed", "blend": grid_noise_blend})
 
             elif data["type"] == "next_sequence":
                 select_sequence(current_seq_idx + 1)
@@ -718,15 +716,6 @@ HTML_CONTENT = """
 
             <div class="control-row">
                 <div class="slider-group">
-                    <label>Noise blend:</label>
-                    <input type="range" id="noiseBlendSlider" min="0" max="1.0" step="0.05" value="0">
-                    <span class="value" id="noiseBlendVal">0.00</span>
-                    <span style="color:#888; font-size:0.8em;">(0=image, 1=noise)</span>
-                </div>
-            </div>
-
-            <div class="control-row">
-                <div class="slider-group">
                     <label>Speed:</label>
                     <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1">
                     <span class="value" id="speedVal">1.0x</span>
@@ -878,13 +867,6 @@ HTML_CONTENT = """
 
         document.getElementById('perturbSlider').addEventListener('input', (e) => {
             document.getElementById('perturbVal').textContent = parseFloat(e.target.value).toFixed(2);
-        });
-
-        // Noise blend slider
-        document.getElementById('noiseBlendSlider').addEventListener('input', (e) => {
-            const blend = parseFloat(e.target.value);
-            document.getElementById('noiseBlendVal').textContent = blend.toFixed(2);
-            if (ws) ws.send(JSON.stringify({ type: 'set_noise_blend', blend }));
         });
 
         // Save Latent button
@@ -1072,9 +1054,6 @@ HTML_CONTENT = """
                             currentSeqIdx = data.current_seq;
                         } else if (data.type === 'latent_changed') {
                             document.getElementById('latentSource').textContent = data.source;
-                        } else if (data.type === 'noise_blend_changed') {
-                            document.getElementById('noiseBlendSlider').value = data.blend;
-                            document.getElementById('noiseBlendVal').textContent = data.blend.toFixed(2);
                         } else if (data.type === 'slots_updated') {
                             updateSlotUI(data.filled, data.selected, data.names);
                         } else if (data.type === 'library_updated') {
