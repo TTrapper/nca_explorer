@@ -162,13 +162,17 @@ def load_data(data_path: str, context_frames: int):
 
 
 def load_library(checkpoint_path: str, device):
-    """Load latent library from disk (same location as web_app_dynamics.py)."""
-    latent_save_dir = Path(checkpoint_path).parent / "latents"
+    """Load latent library from latent_library.json in checkpoint directory."""
+    lib_path = Path(checkpoint_path).parent / "latent_library.json"
     library = {}
-    if latent_save_dir.exists():
-        for f in latent_save_dir.glob("*.pt"):
-            library[f.stem] = torch.load(f, map_location=device, weights_only=True)
-    print(f"Loaded {len(library)} latents from library")
+    if lib_path.exists():
+        with open(lib_path) as f:
+            raw = json.load(f)
+        for name, arr in raw.items():
+            library[name] = torch.tensor(arr, dtype=torch.float32, device=device).unsqueeze(0)
+        print(f"Loaded {len(library)} latents from {lib_path}")
+    else:
+        print(f"No latent_library.json found in {lib_path.parent}")
     return library
 
 
