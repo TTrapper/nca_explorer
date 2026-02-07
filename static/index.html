@@ -558,6 +558,7 @@
                 <button id="randomizeWeights">Random</button>
                 <button id="saveWeights">Save</button>
                 <button id="loadWeights">Load</button>
+                <button id="recordBtn">Record GIF</button>
                 <input type="file" id="fileInput" accept=".json">
             </div>
 
@@ -699,6 +700,19 @@
                     } else if (data.type === 'perf') {
                         document.getElementById('genFps').textContent = data.gen_fps;
                         document.getElementById('simTime').textContent = data.sim_ms;
+                    } else if (data.type === 'recording_status') {
+                        isRecording = data.recording;
+                        recordBtn.textContent = isRecording ? 'Stop Recording' : 'Record GIF';
+                        recordBtn.style.background = isRecording ? '#f44336' : '';
+                        if (data.download_url) {
+                            // Auto-download the GIF
+                            const a = document.createElement('a');
+                            a.href = data.download_url;
+                            a.download = data.filename;
+                            document.body.appendChild(a);
+                            a.click();
+                            document.body.removeChild(a);
+                        }
                     }
                 }
             };
@@ -899,6 +913,19 @@
 
         document.getElementById('resetWeights').addEventListener('click', () => {
             if (ws) ws.send(JSON.stringify({ type: 'reset_weights' }));
+        });
+
+        // Recording
+        let isRecording = false;
+        const recordBtn = document.getElementById('recordBtn');
+        recordBtn.addEventListener('click', () => {
+            if (ws) {
+                if (isRecording) {
+                    ws.send(JSON.stringify({ type: 'stop_recording' }));
+                } else {
+                    ws.send(JSON.stringify({ type: 'start_recording' }));
+                }
+            }
         });
 
         document.getElementById('speed').addEventListener('input', (e) => {

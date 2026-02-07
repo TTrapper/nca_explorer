@@ -3,9 +3,12 @@ import json
 import numpy as np
 from scipy.ndimage import convolve
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, FileResponse
 from fastapi.staticfiles import StaticFiles
 import uvicorn
+from datetime import datetime
+from pathlib import Path
+import cv2
 
 app = FastAPI()
 
@@ -40,6 +43,13 @@ clients: list[WebSocket] = []
 generation_fps = 0.0
 frame_count = 0
 last_fps_time = asyncio.get_event_loop().time() if asyncio.get_event_loop().is_running() else 0
+
+# GIF recording state
+is_recording = False
+recorded_frames = []
+gif_save_dir = Path("gifs")
+gif_save_dir.mkdir(exist_ok=True)
+gif_display_size = 512  # Size to render frames for GIF (respects zoom)
 
 
 def build_kernel_for_channels(weights: np.ndarray, in_ch: int, out_ch: int) -> np.ndarray:
@@ -111,10 +121,73 @@ def grid_to_image_bytes() -> bytes:
     return img_data.tobytes()
 
 
+def start_recording():
+    """Start recording frames for GIF export."""
+    global is_recording, recorded_frames
+    recorded_frames = []
+    is_recording = True
+    print("Started recording...")
+
+
+def stop_recording() -> str | None:
+    """Stop recording and save GIF. Returns the filename."""
+    global is_recording, recorded_frames
+
+    is_recording = False
+    if not recorded_frames:
+        print("No frames recorded")
+        return None
+
+    print(f"Saving GIF with {len(recorded_frames)} frames...")
+
+    # Generate filename with timestamp
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"cca_recording_{timestamp}.gif"
+    filepath = gif_save_dir / filename
+
+    # Convert numpy arrays to PIL Images and save as GIF
+    from PIL import Image
+    pil_frames = [Image.fromarray(frame) for frame in recorded_frames]
+
+    # Save as GIF with 30fps (33ms per frame)
+    pil_frames[0].save(
+        filepath,
+        save_all=True,
+        append_images=pil_frames[1:],
+        duration=33,  # ms per frame (~30fps)
+        loop=0
+    )
+    print(f"Saved GIF to {filepath}")
+
+    recorded_frames = []
+    return filename
+
+
+def capture_frame_for_gif():
+    """Capture current frame at display resolution for GIF recording."""
+    if not is_recording:
+        return
+
+    # Get current grid as image and scale to display size
+    img = (grid * 255).astype(np.uint8)
+    img_scaled = cv2.resize(img, (gif_display_size, gif_display_size), interpolation=cv2.INTER_NEAREST)
+    recorded_frames.append(img_scaled)
+
+
 @app.get("/")
 async def get_index():
     with open("static/index.html", "r") as f:
         return HTMLResponse(f.read())
+
+
+@app.get("/download_gif/{filename}")
+async def download_gif(filename: str):
+    """Download a recorded GIF."""
+    filepath = gif_save_dir / filename
+    if filepath.exists():
+        media_type = "image/gif" if filename.endswith(".gif") else "video/mp4"
+        return FileResponse(filepath, media_type=media_type, filename=filename)
+    return HTMLResponse("File not found", status_code=404)
 
 
 @app.websocket("/ws")
@@ -216,6 +289,19 @@ async def websocket_endpoint(websocket: WebSocket):
                 blend_factor = max(0, min(1, float(data["value"])))
                 await broadcast_state()
 
+            elif data["type"] == "start_recording":
+                start_recording()
+                await websocket.send_json({"type": "recording_status", "recording": True})
+
+            elif data["type"] == "stop_recording":
+                filename = stop_recording()
+                await websocket.send_json({
+                    "type": "recording_status",
+                    "recording": False,
+                    "filename": filename,
+                    "download_url": f"/download_gif/{filename}" if filename else None,
+                })
+
     except WebSocketDisconnect:
         if websocket in clients:
             clients.remove(websocket)
@@ -250,6 +336,9 @@ async def simulation_loop():
 
         step_simulation()
         sim_time = asyncio.get_event_loop().time() - loop_start
+
+        # Capture frame for GIF if recording
+        capture_frame_for_gif()
 
         # Send grid state to all connected clients
         img_bytes = grid_to_image_bytes()
