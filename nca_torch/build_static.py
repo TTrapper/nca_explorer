@@ -561,6 +561,7 @@ def _build_html(cfg):
                     <button id="stepBtn">Step</button>
                     <button id="resetBtn">Reset</button>
                     <button id="saveLatentBtn">Save Latent</button>
+                    <button id="recordBtn">Record GIF</button>
                 </div>
 
                 <div class="control-row" id="seqControls">
@@ -612,6 +613,7 @@ def _build_html(cfg):
 
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@14/build/Tone.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
     <script>
     (function() {{
     "use strict";
@@ -1375,6 +1377,91 @@ def _build_html(cfg):
     }});
 
     // -----------------------------------------------------------------------
+    // GIF recording
+    // -----------------------------------------------------------------------
+    let gifEncoder = null;
+    let isRecording = false;
+    const gifSize = 256;  // match canvas display size
+    const recordBtn = document.getElementById('recordBtn');
+    let gifWorkerBlob = null;  // cached blob URL for gif.js worker
+
+    async function ensureGifWorker() {{
+        if (gifWorkerBlob) return gifWorkerBlob;
+        const resp = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+        const text = await resp.text();
+        const blob = new Blob([text], {{ type: 'application/javascript' }});
+        gifWorkerBlob = URL.createObjectURL(blob);
+        return gifWorkerBlob;
+    }}
+
+    async function startRecording() {{
+        // Reset simulation so recording starts from the first frame
+        await decodeLatent(currentZ);
+        currentFrameIdx = 0;
+
+        const workerScript = await ensureGifWorker();
+        const gifWidth = (currentMode === 'sequence') ? gifSize * 2 : gifSize;
+        gifEncoder = new GIF({{
+            workers: 2,
+            quality: 10,
+            width: gifWidth,
+            height: gifSize,
+            workerScript: workerScript,
+        }});
+        isRecording = true;
+        recordBtn.textContent = 'Stop Recording';
+        recordBtn.style.background = '#f44336';
+    }}
+
+    function captureGifFrame() {{
+        if (!isRecording || !gifEncoder) return;
+        // Offscreen canvas for compositing
+        const offscreen = document.createElement('canvas');
+        const sideBySide = currentMode === 'sequence';
+        offscreen.width = sideBySide ? gifSize * 2 : gifSize;
+        offscreen.height = gifSize;
+        const octx = offscreen.getContext('2d');
+
+        if (sideBySide) {{
+            // NCA on left, GT on right
+            octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
+            octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
+        }} else {{
+            octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
+        }}
+        gifEncoder.addFrame(octx, {{ copy: true, delay: 33 }});
+    }}
+
+    function stopRecording() {{
+        if (!gifEncoder) return;
+        isRecording = false;
+        recordBtn.textContent = 'Saving...';
+        recordBtn.disabled = true;
+
+        gifEncoder.on('finished', (blob) => {{
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'nca_recording.gif';
+            a.click();
+            URL.revokeObjectURL(url);
+            recordBtn.textContent = 'Record GIF';
+            recordBtn.style.background = '';
+            recordBtn.disabled = false;
+        }});
+        gifEncoder.render();
+        gifEncoder = null;
+    }}
+
+    recordBtn.addEventListener('click', async () => {{
+        if (isRecording) {{
+            stopRecording();
+        }} else {{
+            await startRecording();
+        }}
+    }});
+
+    // -----------------------------------------------------------------------
     // Simulation loop
     // -----------------------------------------------------------------------
     let frameCounter = 0;
@@ -1394,6 +1481,7 @@ def _build_html(cfg):
                 renderNcaCanvas();
                 if (currentMode === 'sequence') renderGtCanvas();
                 document.getElementById('frameNum').textContent = currentFrameIdx;
+                captureGifFrame();
             }}
 
             await new Promise(r => setTimeout(r, 1000 / 30));
