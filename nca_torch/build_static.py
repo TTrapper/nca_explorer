@@ -506,12 +506,9 @@ def _build_html(cfg):
         .controls-with-library {{ display: flex; gap: 15px; justify-content: center; }}
         .controls-with-library > .controls {{ flex: 1; min-width: 0; }}
         .library-panel {{ background: #111827; border: 1px solid #333; border-radius: 8px; width: 200px; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; align-self: stretch; }}
-        .library-header {{ padding: 8px 10px; font-size: 0.85em; font-weight: bold; color: #4fc3f7; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center; }}
-        .library-header button {{ padding: 2px 8px; font-size: 0.8em; }}
-        .library-save-row {{ display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid #333; }}
-        .library-save-row input {{ flex: 1; min-width: 0; background: #1a1a2e; border: 1px solid #555; border-radius: 4px; color: #eee; padding: 4px 8px; font-size: 0.8em; outline: none; }}
-        .library-save-row input:focus {{ border-color: #4fc3f7; }}
-        .library-save-row button {{ padding: 4px 10px; font-size: 0.8em; flex-shrink: 0; }}
+        .library-header {{ padding: 8px 10px; font-size: 0.85em; font-weight: bold; color: #4fc3f7; border-bottom: 1px solid #333; }}
+        .library-toolbar {{ display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid #333; }}
+        .library-toolbar button {{ padding: 4px 10px; font-size: 0.8em; flex: 1; }}
         .library-list {{ overflow-y: auto; flex: 1; min-height: 40px; }}
         .lib-item {{ display: flex; align-items: center; padding: 5px 8px; cursor: grab; border-radius: 4px; color: #eee; gap: 6px; font-size: 0.85em; }}
         .lib-item:hover {{ background: #2a2a4e; }}
@@ -545,10 +542,10 @@ def _build_html(cfg):
 
         <div class="controls-with-library">
             <div class="library-panel" id="libraryPanel">
-                <div class="library-header"><span>Latent Library</span><button id="libExportBtn">Export</button></div>
-                <div class="library-save-row">
-                    <input type="text" id="libSaveInput" placeholder="Name..." />
-                    <button id="libSaveBtn">Save</button>
+                <div class="library-header">Latent Library</div>
+                <div class="library-toolbar">
+                    <button id="libShuffleBtn">Shuffle</button>
+                    <button id="libExportBtn">Export</button>
                 </div>
                 <div class="library-list" id="libraryList"></div>
             </div>
@@ -563,6 +560,7 @@ def _build_html(cfg):
                     <button id="playPauseBtn">Pause</button>
                     <button id="stepBtn">Step</button>
                     <button id="resetBtn">Reset</button>
+                    <button id="saveLatentBtn">Save Latent</button>
                 </div>
 
                 <div class="control-row" id="seqControls">
@@ -1186,15 +1184,26 @@ def _build_html(cfg):
         const list = document.getElementById('libraryList');
         list.innerHTML = '';
 
-        const nameToNotes = {{}};
+        // Build map: name -> list of {{ slotIdx, noteName }}
+        const nameToSlots = {{}};
         for (let i = 0; i < slotNames.length; i++) {{
             if (slotNames[i]) {{
-                if (!nameToNotes[slotNames[i]]) nameToNotes[slotNames[i]] = [];
-                nameToNotes[slotNames[i]].push(NOTES[i].note);
+                if (!nameToSlots[slotNames[i]]) nameToSlots[slotNames[i]] = [];
+                nameToSlots[slotNames[i]].push({{ idx: i, note: NOTES[i].note }});
             }}
         }}
 
         const names = getLibraryNames();
+        // Sort: assigned items first (by lowest slot index), unassigned alphabetically at bottom
+        names.sort((a, b) => {{
+            const aSlots = nameToSlots[a];
+            const bSlots = nameToSlots[b];
+            const aMin = aSlots ? Math.min(...aSlots.map(s => s.idx)) : Infinity;
+            const bMin = bSlots ? Math.min(...bSlots.map(s => s.idx)) : Infinity;
+            if (aMin !== bMin) return aMin - bMin;
+            return a.localeCompare(b);
+        }});
+
         if (names.length === 0) {{
             const empty = document.createElement('div');
             empty.className = 'lib-empty';
@@ -1219,11 +1228,11 @@ def _build_html(cfg):
             nameSpan.textContent = name;
             item.appendChild(nameSpan);
 
-            if (nameToNotes[name]) {{
-                nameToNotes[name].forEach(note => {{
+            if (nameToSlots[name]) {{
+                nameToSlots[name].forEach(s => {{
                     const badge = document.createElement('span');
                     badge.className = 'lib-item-badge';
-                    badge.textContent = note;
+                    badge.textContent = s.note;
                     item.appendChild(badge);
                 }});
             }}
@@ -1241,22 +1250,11 @@ def _build_html(cfg):
         }});
     }}
 
-    // Save input wiring
-    const libSaveInput = document.getElementById('libSaveInput');
-    const libSaveBtn = document.getElementById('libSaveBtn');
-    function saveFromInput() {{
-        const name = libSaveInput.value.trim();
-        if (name) {{
-            saveToLibrary(name);
-            libSaveInput.value = '';
-        }}
-    }}
-    libSaveBtn.addEventListener('click', saveFromInput);
-    libSaveInput.addEventListener('keydown', (e) => {{
-        e.stopPropagation();
-        if (e.key === 'Enter') saveFromInput();
+    // Save latent button — prompts for name
+    document.getElementById('saveLatentBtn').addEventListener('click', () => {{
+        const name = prompt('Save current latent as:');
+        if (name && name.trim()) saveToLibrary(name.trim());
     }});
-    libSaveInput.addEventListener('keyup', (e) => {{ e.stopPropagation(); }});
 
     // Export entire library as JSON download
     function downloadLibrary() {{
@@ -1272,6 +1270,32 @@ def _build_html(cfg):
         URL.revokeObjectURL(a.href);
     }}
     document.getElementById('libExportBtn').addEventListener('click', downloadLibrary);
+
+    // Shuffle: randomly assign library latents to piano keys
+    function shuffleLibrary() {{
+        const names = getLibraryNames();
+        // Fisher-Yates shuffle
+        for (let i = names.length - 1; i > 0; i--) {{
+            const j = Math.floor(Math.random() * (i + 1));
+            [names[i], names[j]] = [names[j], names[i]];
+        }}
+        // Clear all slots
+        for (let i = 0; i < 19; i++) {{
+            latentSlots[i] = null;
+            slotNames[i] = null;
+        }}
+        selectedSlots.clear();
+        filledSlots.clear();
+        // Assign shuffled names to keys
+        for (let i = 0; i < Math.min(names.length, 19); i++) {{
+            const name = names[i];
+            latentSlots[i] = new Float32Array(latentLibrary[name]);
+            slotNames[i] = name;
+            filledSlots.add(i);
+        }}
+        updateSlotUI();
+    }}
+    document.getElementById('libShuffleBtn').addEventListener('click', shuffleLibrary);
 
     // -----------------------------------------------------------------------
     // Mode switching
