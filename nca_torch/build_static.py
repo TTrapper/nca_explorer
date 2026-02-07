@@ -493,8 +493,7 @@ def _build_html(cfg):
         .piano-key.filled.black {{ background: #224; }}
         .piano-key.selected.white {{ background: #4fc3f7; color: #1a1a2e; box-shadow: 0 0 10px #4fc3f7; }}
         .piano-key.selected.black {{ background: #4fc3f7; color: #1a1a2e; box-shadow: 0 0 10px #4fc3f7; }}
-        .piano-key .note-name {{ font-size: 1.1em; }}
-        .piano-key .key-hint {{ font-size: 0.9em; opacity: 0.5; }}
+        .piano-key .key-hint {{ font-size: 1.1em; }}
 
         .controls-with-library {{ display: flex; gap: 15px; justify-content: center; }}
         .controls-with-library > .controls {{ flex: 1; min-width: 0; }}
@@ -1017,13 +1016,9 @@ def _build_html(cfg):
     for (let i = 0; i < NOTES.length; i++) {{
         const key = document.createElement('div');
         key.className = 'piano-key ' + NOTES[i].type;
-        const noteName = document.createElement('div');
-        noteName.className = 'note-name';
-        noteName.textContent = NOTES[i].note;
         const keyHint = document.createElement('div');
         keyHint.className = 'key-hint';
         keyHint.textContent = NOTES[i].key;
-        key.appendChild(noteName);
         key.appendChild(keyHint);
 
         key.addEventListener('click', () => {{
