@@ -23,11 +23,7 @@ from tqdm import tqdm
 import matplotlib.pyplot as plt
 import numpy as np
 
-from autoencoder import (
-    NCAAutoencoder, vae_loss,
-    FrameDiscriminator, SequenceDiscriminator,
-    gan_loss_discriminator, gan_loss_generator,
-)
+from autoencoder import NCAAutoencoder, vae_loss
 from datasets import SequenceDataset
 
 
@@ -74,16 +70,6 @@ def get_args():
     # Latent noise (helps fill in latent space)
     parser.add_argument("--latent-noise-std", type=float, default=0.0,
                         help="Noise std added to latent z during training (helps fill latent space)")
-
-    # GAN training
-    parser.add_argument("--use-gan", action="store_true",
-                        help="Use adversarial training with discriminator")
-    parser.add_argument("--gan-weight", type=float, default=0.1,
-                        help="Weight for adversarial loss")
-    parser.add_argument("--d-lr", type=float, default=4e-4,
-                        help="Discriminator learning rate")
-    parser.add_argument("--use-sequence-disc", action="store_true",
-                        help="Use temporal sequence discriminator instead of frame discriminator")
 
     # System
     parser.add_argument("--device", type=str,
@@ -159,28 +145,6 @@ class DynamicsTrainer:
 
         print(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
 
-        # Discriminator (optional)
-        self.use_gan = args.use_gan
-        self.discriminator = None
-        self.d_optimizer = None
-
-        if self.use_gan:
-            if args.use_sequence_disc:
-                self.discriminator = SequenceDiscriminator(
-                    in_channels=self.in_channels,
-                ).to(self.device)
-            else:
-                self.discriminator = FrameDiscriminator(
-                    in_channels=self.in_channels,
-                ).to(self.device)
-
-            self.d_optimizer = torch.optim.Adam(
-                self.discriminator.parameters(),
-                lr=args.d_lr,
-                betas=(0.5, 0.999),
-            )
-            print(f"Discriminator parameters: {sum(p.numel() for p in self.discriminator.parameters()):,}")
-
         # Optimizer
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -190,7 +154,6 @@ class DynamicsTrainer:
         # Logging
         self.history = {
             "train_loss": [], "train_recon": [], "train_kl": [],
-            "train_g_adv": [], "train_d_loss": [],
             "val_loss": [], "val_recon": [], "val_kl": [],
             "ss_prob": [],
         }
@@ -208,14 +171,10 @@ class DynamicsTrainer:
 
     def train_epoch(self, epoch: int):
         self.model.train()
-        if self.discriminator:
-            self.discriminator.train()
 
         total_loss = 0
         total_recon = 0
         total_kl = 0
-        total_g_adv = 0
-        total_d_loss = 0
         num_batches = 0
 
         ss_prob = self.get_ss_prob(epoch)
@@ -242,10 +201,8 @@ class DynamicsTrainer:
             total_step_loss = 0
             total_step_recon = 0
             total_step_kl = 0
-            total_step_g_adv = 0
 
             current_frame = init_frame
-            all_preds = []  # Collect predictions for sequence discriminator
 
             # ============ Generator forward pass ============
             self.optimizer.zero_grad()
@@ -268,8 +225,6 @@ class DynamicsTrainer:
                     init_images=current_frame,
                 )
 
-                all_preds.append(pred)
-
                 # Loss against ground truth target
                 target = future_targets[:, step]  # [B, C, H, W]
                 loss, recon_loss, kl_loss = vae_loss(
@@ -279,13 +234,6 @@ class DynamicsTrainer:
                 total_step_loss += loss
                 total_step_recon += recon_loss.item()
                 total_step_kl += kl_loss.item()
-
-                # Frame-level adversarial loss (if using frame discriminator)
-                if self.use_gan and not self.args.use_sequence_disc:
-                    fake_preds = self.discriminator(pred)
-                    g_adv_loss = gan_loss_generator(fake_preds)
-                    total_step_loss += self.args.gan_weight * g_adv_loss
-                    total_step_g_adv += g_adv_loss.item()
 
                 # Scheduled sampling: decide whether to use prediction or ground truth
                 if step < M - 1:
@@ -303,70 +251,29 @@ class DynamicsTrainer:
 
                     current_frame = next_frame
 
-            # Sequence-level adversarial loss (if using sequence discriminator)
-            if self.use_gan and self.args.use_sequence_disc:
-                pred_seq = torch.stack(all_preds, dim=1)  # [B, M, C, H, W]
-                fake_preds = self.discriminator(pred_seq)
-                g_adv_loss = gan_loss_generator(fake_preds)
-                total_step_loss += self.args.gan_weight * g_adv_loss
-                total_step_g_adv = g_adv_loss.item()
-
             # Average loss over steps and backprop
-            g_loss = total_step_loss / M
+            avg_loss = total_step_loss / M
 
-            g_loss.backward()
+            avg_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
             self.optimizer.step()
 
-            # ============ Discriminator training ============
-            d_loss_val = 0.0
-            if self.use_gan:
-                self.d_optimizer.zero_grad()
-
-                if self.args.use_sequence_disc:
-                    # Sequence discriminator
-                    real_seq = future_targets  # [B, M, C, H, W]
-                    fake_seq = torch.stack(all_preds, dim=1).detach()
-
-                    real_preds = self.discriminator(real_seq)
-                    fake_preds = self.discriminator(fake_seq)
-                else:
-                    # Frame discriminator - use random frame from sequence
-                    step_idx = torch.randint(0, M, (1,)).item()
-                    real_frames = future_targets[:, step_idx]
-                    fake_frames = all_preds[step_idx].detach()
-
-                    real_preds = self.discriminator(real_frames)
-                    fake_preds = self.discriminator(fake_frames)
-
-                d_loss = gan_loss_discriminator(real_preds, fake_preds)
-                d_loss.backward()
-                self.d_optimizer.step()
-                d_loss_val = d_loss.item()
-
-            total_loss += g_loss.item()
+            total_loss += avg_loss.item()
             total_recon += total_step_recon / M
             total_kl += total_step_kl / M
-            total_g_adv += total_step_g_adv / M if not self.args.use_sequence_disc else total_step_g_adv
-            total_d_loss += d_loss_val
             num_batches += 1
 
             if batch_idx % self.args.log_interval == 0:
-                postfix = {
-                    "loss": f"{g_loss.item():.4f}",
+                pbar.set_postfix({
+                    "loss": f"{avg_loss.item():.4f}",
                     "recon": f"{total_step_recon / M:.4f}",
                     "ss": f"{ss_prob:.2f}",
-                }
-                if self.use_gan:
-                    postfix["d"] = f"{d_loss_val:.3f}"
-                pbar.set_postfix(postfix)
+                })
 
         return (
             total_loss / num_batches,
             total_recon / num_batches,
             total_kl / num_batches,
-            total_g_adv / num_batches if self.use_gan else 0.0,
-            total_d_loss / num_batches if self.use_gan else 0.0,
         )
 
     @torch.no_grad()
@@ -582,10 +489,6 @@ class DynamicsTrainer:
             "context_frames": self.context_frames,
             "num_steps": self.args.num_steps,
         }
-        if self.discriminator is not None:
-            checkpoint["discriminator_state_dict"] = self.discriminator.state_dict()
-            checkpoint["d_optimizer_state_dict"] = self.d_optimizer.state_dict()
-
         torch.save(checkpoint, self.save_dir / f"checkpoint_epoch_{epoch:03d}.pt")
         torch.save(checkpoint, self.save_dir / "checkpoint_latest.pt")
 
@@ -596,7 +499,6 @@ class DynamicsTrainer:
     def train(self):
         print(f"\nTraining NCA Dynamics Predictor on {self.device}")
         print(f"VAE mode: {not self.args.no_vae}")
-        print(f"GAN mode: {self.use_gan}" + (f" (weight={self.args.gan_weight})" if self.use_gan else ""))
         print(f"Context frames: {self.context_frames}")
         print(f"NCA steps per frame: {self.args.num_steps}")
         print(f"Scheduled sampling: {self.args.ss_steps} steps, "
@@ -607,7 +509,7 @@ class DynamicsTrainer:
 
         for epoch in range(1, self.args.epochs + 1):
             ss_prob = self.get_ss_prob(epoch)
-            train_loss, train_recon, train_kl, train_g_adv, train_d_loss = self.train_epoch(epoch)
+            train_loss, train_recon, train_kl = self.train_epoch(epoch)
             val_loss, val_recon, val_kl = self.evaluate()
 
             self.scheduler.step()
@@ -615,17 +517,12 @@ class DynamicsTrainer:
             self.history["train_loss"].append(train_loss)
             self.history["train_recon"].append(train_recon)
             self.history["train_kl"].append(train_kl)
-            self.history["train_g_adv"].append(train_g_adv)
-            self.history["train_d_loss"].append(train_d_loss)
             self.history["val_loss"].append(val_loss)
             self.history["val_recon"].append(val_recon)
             self.history["val_kl"].append(val_kl)
             self.history["ss_prob"].append(ss_prob)
 
-            log_msg = f"Epoch {epoch}: train={train_loss:.4f}, val={val_loss:.4f}, ss_prob={ss_prob:.2f}"
-            if self.use_gan:
-                log_msg += f", d_loss={train_d_loss:.3f}"
-            print(log_msg)
+            print(f"Epoch {epoch}: train={train_loss:.4f}, val={val_loss:.4f}, ss_prob={ss_prob:.2f}")
 
             if val_loss < best_loss:
                 best_loss = val_loss
