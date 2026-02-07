@@ -71,7 +71,7 @@ def get_args():
                         help="Epochs to linearly increase scheduled sampling probability")
 
     # Latent noise (helps fill in latent space)
-    parser.add_argument("--latent-noise-std", type=float, default=0.5,
+    parser.add_argument("--latent-noise-std", type=float, default=0.0,
                         help="Noise std added to latent z during training (helps fill latent space)")
 
     # Perceptual loss
@@ -218,7 +218,7 @@ class DynamicsTrainer:
             H, W = self.grid_size
             M = future_targets.shape[1]  # Number of future frames
 
-            # Reshape context for sliding window updates: [B, N, C, H, W]
+            # Keep context for perceptual loss (ground truth, not updated)
             context_window = context_stacked.view(B, N, C, H, W)
 
             total_step_loss = 0
@@ -226,28 +226,30 @@ class DynamicsTrainer:
             total_step_kl = 0
             total_step_perceptual = 0
 
-            current_frame = init_frame
-
-            # ============ Generator forward pass ============
+            # ============ Encode ONCE from ground truth context ============
             self.optimizer.zero_grad()
 
+            z, mu, logvar = self.model.encode(context_stacked)
+
+            # Add noise to latent to fill in latent space
+            if self.args.latent_noise_std > 0:
+                z = z + torch.randn_like(z) * self.args.latent_noise_std
+
+            # Track current frame for NCA dynamics (steps 1+)
+            current_frame = None
+
             for step in range(M):
-                # Stack context: [B, N*C, H, W]
-                encoder_input = context_window.view(B, N * C, H, W)
-
-                # Encode and predict next frame (k=1)
-                z, mu, logvar = self.model.encode(encoder_input)
-
-                # Add noise to latent to fill in latent space
-                if self.args.latent_noise_std > 0:
-                    z = z + torch.randn_like(z) * self.args.latent_noise_std
-
-                pred = self.model.decode(
-                    z,
-                    num_steps=self.args.num_steps,
-                    init_mode="image",
-                    init_images=current_frame,
-                )
+                # Step 0: FirstFrameDecoder (direct CNN decode)
+                # Steps 1+: NCA dynamics (refine previous frame)
+                if step == 0:
+                    pred = self.model.decode_first_frame(z)
+                else:
+                    pred = self.model.decode(
+                        z,
+                        num_steps=self.args.num_steps,
+                        init_mode="image",
+                        init_images=current_frame,
+                    )
 
                 # Loss against ground truth target
                 target = future_targets[:, step]  # [B, C, H, W]
@@ -269,21 +271,13 @@ class DynamicsTrainer:
                 total_step_kl += kl_loss.item()
                 total_step_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
 
-                # Scheduled sampling: decide whether to use prediction or ground truth
+                # Use own prediction for next step (ss_prob=1.0 means always)
                 if step < M - 1:
                     use_prediction = torch.rand(1).item() < ss_prob
-
                     if use_prediction:
-                        next_frame = pred.detach()
+                        current_frame = pred.detach()
                     else:
-                        next_frame = target
-
-                    context_window = torch.cat([
-                        context_window[:, 1:],
-                        next_frame.unsqueeze(1)
-                    ], dim=1)
-
-                    current_frame = next_frame
+                        current_frame = target
 
             # Average loss over steps and backprop
             avg_loss = total_step_loss / M
@@ -333,14 +327,11 @@ class DynamicsTrainer:
             N = self.context_frames
             H, W = self.grid_size
 
-            # For validation, just evaluate single-step prediction (no noise, no scheduled sampling)
+            # Encode once from ground truth context (matches training)
             z, mu, logvar = self.model.encode(context_stacked)
-            pred = self.model.decode(
-                z,
-                num_steps=self.args.num_steps,
-                init_mode="image",  # Clean init for evaluation
-                init_images=init_frame,
-            )
+
+            # First step uses FirstFrameDecoder (matches training step 0)
+            pred = self.model.decode_first_frame(z)
 
             # Loss against first future frame
             target = future_targets[:, 0]
@@ -422,13 +413,8 @@ class DynamicsTrainer:
             if col == 0:
                 axes[1, col].set_ylabel("Target (t+1)", fontsize=10)
 
-            # Row 2: Prediction (t+1)
-            pred = self.model.decode(
-                z[col:col+1],
-                num_steps=self.args.num_steps,
-                init_mode="image",
-                init_images=init_frame[col:col+1],
-            )
+            # Row 2: Prediction (t+1) using FirstFrameDecoder
+            pred = self.model.decode_first_frame(z[col:col+1])
             img = pred[0].permute(1, 2, 0).cpu().numpy()
             if img.shape[-1] == 1:
                 img = img.squeeze(-1)
@@ -465,25 +451,28 @@ class DynamicsTrainer:
         # Encode ONCE from initial context
         z, _, _ = self.model.encode(context_stacked)
 
-        # Generate NCA parameters once
+        # First frame from FirstFrameDecoder
+        first_frame = self.model.decode_first_frame(z)
+        frames = [first_frame.clone()]
+
+        # Generate NCA parameters for dynamics
         layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
 
-        # Initialize NCA grid from init_frame
-        grid = self.model.decoder.init_grid(
-            batch_size=1,
-            grid_size=self.grid_size,
-            device=self.device,
-            init_mode="image",
-            init_images=init_frame,
-        )
-
-        frames = [torch.sigmoid(grid[:, :self.in_channels]).clone()]
-
-        # Run NCA autonomously (no re-encoding!)
+        # Run NCA for subsequent frames (dynamics)
+        current_frame = first_frame
         for _ in range(rollout_steps):
-            grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
-            frame = torch.sigmoid(grid[:, :self.in_channels])
-            frames.append(frame.clone())
+            # Init grid from previous frame, run NCA
+            grid = self.model.decoder.init_grid(
+                batch_size=1,
+                grid_size=self.grid_size,
+                device=self.device,
+                init_mode="image",
+                init_images=current_frame,
+            )
+            for _ in range(self.args.num_steps):
+                grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
+            current_frame = torch.sigmoid(grid[:, :self.in_channels])
+            frames.append(current_frame.clone())
 
         # Plot: ground truth on top, predictions on bottom
         n_frames = min(16, len(frames))
@@ -554,6 +543,7 @@ class DynamicsTrainer:
         print(f"Scheduled sampling: {self.args.ss_steps} steps, "
               f"prob {self.args.ss_start_prob} -> {self.args.ss_end_prob} "
               f"over {self.args.ss_warmup_epochs} epochs")
+        print(f"First frame: FirstFrameDecoder, dynamics: NCA ({self.args.num_steps} steps)")
         print(f"Loss weights: recon={self.args.recon_weight}, kl={self.args.kl_weight}", end="")
         if self.perceptual_loss is not None:
             print(f", perceptual={self.args.perceptual_weight}")

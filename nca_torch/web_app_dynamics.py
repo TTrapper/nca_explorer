@@ -154,37 +154,26 @@ def select_sequence(idx: int):
 def _reset_grid():
     """Reset grid and current_nca_frame.
 
-    Sequence mode: init from last context frame (pure image).
-    Free latent mode: init from pure noise.
+    Both modes use FirstFrameDecoder to generate the first predicted frame from z.
+    This matches training where step 0 always uses FirstFrameDecoder.
     """
     global grid, current_nca_frame, current_frame_idx
     current_frame_idx = 0
     with torch.no_grad():
-        if current_mode == 'latent':
-            init_images = torch.rand(1, in_channels, *grid_size, device=device)
-        else:
-            init_images = init_frame
-
-        grid = model.decoder.init_grid(
-            batch_size=1,
-            grid_size=grid_size,
-            device=device,
-            init_mode="image",
-            init_images=init_images,
-        )
-        current_nca_frame = grid[:, :in_channels].clamp(0, 1).clone()
+        # FirstFrameDecoder generates first predicted frame (frame N, where context is 0..N-1)
+        # NCA then evolves subsequent frames from its own outputs
+        current_nca_frame = model.decode_first_frame(current_z)
 
 
 def step_nca():
-    """Run NCA steps for one frame, matching training behavior.
+    """Run NCA steps for one frame (dynamics).
 
-    During training, each frame prediction re-initializes the grid from the previous
-    sigmoid output, runs num_steps NCA steps, then extracts sigmoid output.
-    Without this re-init, grid values grow unboundedly and diverge.
+    Uses previous frame as input, NCA refines it to next frame.
+    First frame comes from FirstFrameDecoder, subsequent frames from NCA.
     """
     global grid, current_nca_frame
     with torch.no_grad():
-        # Re-init grid from previous output (matches training's per-step decode)
+        # Re-init from previous output for continuity
         grid = model.decoder.init_grid(
             batch_size=1,
             grid_size=grid_size,
@@ -193,7 +182,7 @@ def step_nca():
             init_images=current_nca_frame,
         )
         layer1_w, layer1_b, layer2_w, layer2_b = nca_params
-        # Run num_steps NCA steps per frame (matches training)
+        # Run num_steps NCA steps per frame
         for _ in range(num_steps):
             grid = model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
         current_nca_frame = torch.sigmoid(grid[:, :in_channels])
