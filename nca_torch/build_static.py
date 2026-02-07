@@ -633,6 +633,7 @@ def _build_html(cfg):
     let isPlaying = true;
     let playbackSpeed = 1.0;
     let currentMode = 'sequence';
+    let isLoading = false;  // true while selectSequence/decodeLatent in progress
 
     // Current latent & decoded params
     let currentZ = null;           // Float32Array [latentDim]
@@ -833,6 +834,7 @@ def _build_html(cfg):
     // Sequence & latent management
     // -----------------------------------------------------------------------
     async function selectSequence(idx) {{
+        isLoading = true;
         currentSeqIdx = ((idx % numSequences) + numSequences) % numSequences;
         currentFrameIdx = 0;
 
@@ -850,6 +852,7 @@ def _build_html(cfg):
         document.getElementById('latentSource').textContent = 'encoded';
 
         renderContextFrames();
+        isLoading = false;
     }}
 
     function resetNca() {{
@@ -884,7 +887,6 @@ def _build_html(cfg):
         const n = selectedSlots.size;
         for (let i = 0; i < latentDim; i++) mean[i] /= n;
         currentZ = mean;
-        currentMode = 'latent';
         await decodeLatent(currentZ);
         currentFrameIdx = 0;
     }}
@@ -1379,7 +1381,7 @@ def _build_html(cfg):
 
     async function simulationLoop() {{
         while (true) {{
-            if (isPlaying) {{
+            if (isPlaying && !isLoading && cachedParams) {{
                 frameCounter += playbackSpeed;
                 while (frameCounter >= 1) {{
                     await stepNca();
@@ -1388,9 +1390,11 @@ def _build_html(cfg):
                 }}
             }}
 
-            renderNcaCanvas();
-            if (currentMode === 'sequence') renderGtCanvas();
-            document.getElementById('frameNum').textContent = currentFrameIdx;
+            if (!isLoading) {{
+                renderNcaCanvas();
+                if (currentMode === 'sequence') renderGtCanvas();
+                document.getElementById('frameNum').textContent = currentFrameIdx;
+            }}
 
             await new Promise(r => setTimeout(r, 1000 / 30));
         }}
