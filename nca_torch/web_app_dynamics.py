@@ -404,6 +404,20 @@ async def websocket_endpoint(websocket: WebSocket):
                     apply_slot_selection()
                 await websocket.send_json(get_slots_state())
 
+            elif data["type"] == "key_down":
+                idx = int(data["index"])
+                if latent_slots[idx] is not None:
+                    selected_slots.add(idx)
+                    apply_slot_selection()
+                await websocket.send_json(get_slots_state())
+
+            elif data["type"] == "key_up":
+                idx = int(data["index"])
+                selected_slots.discard(idx)
+                if selected_slots:
+                    apply_slot_selection()
+                await websocket.send_json(get_slots_state())
+
             elif data["type"] == "clear_slot":
                 idx = int(data["index"])
                 latent_slots[idx] = None
@@ -913,8 +927,34 @@ HTML_CONTENT = """
 
         // Audio feedback — lazy AudioContext (browser requires user gesture)
         let audioCtx = null;
-        function playTone(freq) {
+        const activeTones = {};  // slot index -> { osc, gain }
+        function ensureAudioCtx() {
             if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        }
+        function startTone(idx) {
+            if (activeTones[idx]) return;  // already sounding
+            ensureAudioCtx();
+            const osc = audioCtx.createOscillator();
+            const gain = audioCtx.createGain();
+            osc.type = 'sine';
+            osc.frequency.value = NOTES[idx].freq;
+            gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+            osc.connect(gain);
+            gain.connect(audioCtx.destination);
+            osc.start();
+            activeTones[idx] = { osc, gain };
+        }
+        function stopTone(idx) {
+            const tone = activeTones[idx];
+            if (!tone) return;
+            const t = audioCtx.currentTime;
+            tone.gain.gain.setValueAtTime(tone.gain.gain.value, t);
+            tone.gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
+            tone.osc.stop(t + 0.08);
+            delete activeTones[idx];
+        }
+        function playTone(freq) {
+            ensureAudioCtx();
             const osc = audioCtx.createOscillator();
             const gain = audioCtx.createGain();
             osc.type = 'sine';
@@ -967,14 +1007,21 @@ HTML_CONTENT = """
             pianoKeys.push(key);
         }
 
-        // Keyboard shortcuts for playing slots
+        // Keyboard shortcuts for playing slots (hold = sustain, multi-key = chord)
         document.addEventListener('keydown', (e) => {
             if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
             if (e.repeat) return;
             const idx = keyToSlot[e.key];
             if (idx !== undefined && ws) {
-                playTone(NOTES[idx].freq);
-                ws.send(JSON.stringify({ type: 'play_slot', index: idx }));
+                startTone(idx);
+                ws.send(JSON.stringify({ type: 'key_down', index: idx }));
+            }
+        });
+        document.addEventListener('keyup', (e) => {
+            const idx = keyToSlot[e.key];
+            if (idx !== undefined) {
+                stopTone(idx);
+                if (ws) ws.send(JSON.stringify({ type: 'key_up', index: idx }));
             }
         });
 
