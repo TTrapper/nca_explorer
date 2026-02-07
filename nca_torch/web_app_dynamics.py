@@ -37,9 +37,9 @@ playback_speed = 1.0
 current_mode = 'sequence'  # 'sequence' or 'latent'
 
 # Latent slots
-latent_slots = [None] * 12      # List of saved latent tensors (or None)
+latent_slots = [None] * 19      # List of saved latent tensors (or None)
 selected_slots = set()           # Set of selected slot indices
-slot_names = [None] * 12        # Name of latent loaded in each slot
+slot_names = [None] * 19        # Name of latent loaded in each slot
 
 # Latent library (persistent on disk)
 latent_save_dir = None           # Path to latents/ directory
@@ -235,7 +235,7 @@ def get_slots_state() -> dict:
     """Return JSON-serializable slot state."""
     return {
         "type": "slots_updated",
-        "filled": [i for i in range(12) if latent_slots[i] is not None],
+        "filled": [i for i in range(len(latent_slots)) if latent_slots[i] is not None],
         "selected": sorted(selected_slots),
         "names": list(slot_names),
     }
@@ -451,7 +451,7 @@ async def websocket_endpoint(websocket: WebSocket):
                     pt_file.unlink()
                 latent_library.pop(name, None)
                 # Clear any slots that held this latent
-                for i in range(12):
+                for i in range(len(latent_slots)):
                     if slot_names[i] == name:
                         latent_slots[i] = None
                         slot_names[i] = None
@@ -921,6 +921,13 @@ HTML_CONTENT = """
             { note: 'D',  key: 'h', type: 'white', freq: 587.33 },
             { note: 'D#', key: 'u', type: 'black', freq: 622.25 },
             { note: 'E',  key: 'j', type: 'white', freq: 659.25 },
+            { note: 'F',  key: 'k', type: 'white', freq: 698.46 },
+            { note: 'F#', key: 'o', type: 'black', freq: 739.99 },
+            { note: 'G',  key: 'l', type: 'white', freq: 783.99 },
+            { note: 'G#', key: 'p', type: 'black', freq: 830.61 },
+            { note: 'A',  key: ';', type: 'white', freq: 880.00 },
+            { note: 'A#', key: '[', type: 'black', freq: 932.33 },
+            { note: 'B',  key: "'", type: 'white', freq: 987.77 },
         ];
         const keyToSlot = {};
         NOTES.forEach((n, i) => { keyToSlot[n.key] = i; });
@@ -975,7 +982,7 @@ HTML_CONTENT = """
         let libraryNames = [];
         let libraryPopup = null;
 
-        for (let i = 0; i < 12; i++) {
+        for (let i = 0; i < NOTES.length; i++) {
             const key = document.createElement('div');
             key.className = 'piano-key ' + NOTES[i].type;
             const noteName = document.createElement('div');
@@ -1030,7 +1037,7 @@ HTML_CONTENT = """
             selectedSlots.clear();
             filled.forEach(i => filledSlots.add(i));
             selected.forEach(i => selectedSlots.add(i));
-            for (let i = 0; i < 12; i++) {
+            for (let i = 0; i < NOTES.length; i++) {
                 pianoKeys[i].className = 'piano-key ' + NOTES[i].type
                     + (filledSlots.has(i) ? ' filled' : '')
                     + (selectedSlots.has(i) ? ' selected' : '');
