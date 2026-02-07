@@ -98,6 +98,15 @@ def load_model(checkpoint_path: str, dev: str = "cpu"):
         latent_library[f.stem] = torch.load(f, map_location=device, weights_only=True)
     print(f"  Latent library: {len(latent_library)} saved latents")
 
+    # Auto-load saved latents into slots (alphabetical order)
+    for i, name in enumerate(sorted(latent_library.keys())):
+        if i >= len(latent_slots):
+            break
+        latent_slots[i] = latent_library[name].clone().to(device)
+        slot_names[i] = name
+    if latent_library:
+        print(f"  Auto-loaded {min(len(latent_library), len(latent_slots))} latents into slots")
+
     return model
 
 
@@ -337,6 +346,8 @@ async def websocket_endpoint(websocket: WebSocket):
         "num_sequences": dataset.num_sequences,
         "current_seq": current_seq_idx,
     })
+
+    await websocket.send_json(get_slots_state())
 
     clients.append(websocket)
 
