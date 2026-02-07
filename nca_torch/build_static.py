@@ -503,9 +503,9 @@ def _build_html(cfg):
         .instrument-select:hover {{ background: #16213e; }}
         .instrument-loading {{ color: #888; font-size: 0.8em; }}
 
-        .controls-with-library {{ display: flex; gap: 15px; justify-content: center; }}
+        .controls-with-library {{ display: flex; gap: 15px; justify-content: center; align-items: start; }}
         .controls-with-library > .controls {{ flex: 1; min-width: 0; }}
-        .library-panel {{ background: #111827; border: 1px solid #333; border-radius: 8px; width: 200px; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; align-self: stretch; }}
+        .library-panel {{ background: #111827; border: 1px solid #333; border-radius: 8px; width: 200px; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; }}
         .library-header {{ padding: 8px 10px; font-size: 0.85em; font-weight: bold; color: #4fc3f7; border-bottom: 1px solid #333; }}
         .library-toolbar {{ display: flex; gap: 4px; padding: 6px 8px; border-bottom: 1px solid #333; }}
         .library-toolbar button {{ padding: 4px 10px; font-size: 0.8em; flex: 1; }}
@@ -1441,6 +1441,13 @@ def _build_html(cfg):
         loadSlotsFromManifest();
         renderLibraryPanel();
         loadInstrument('piano');
+
+        // Match library panel height to controls
+        const controlsEl = document.querySelector('.controls-with-library > .controls');
+        const panelEl = document.getElementById('libraryPanel');
+        new ResizeObserver(() => {{
+            panelEl.style.maxHeight = controlsEl.offsetHeight + 'px';
+        }}).observe(controlsEl);
 
         // Load first sequence
         statusEl.textContent = 'Loading first sequence...';
