@@ -20,11 +20,14 @@ from torch.utils.data import DataLoader, random_split
 from pathlib import Path
 import json
 from tqdm import tqdm
+import matplotlib
+matplotlib.use('Agg')  # Non-interactive backend for training
 import matplotlib.pyplot as plt
 import numpy as np
 
 from autoencoder import NCAAutoencoder, vae_loss
 from datasets import SequenceDataset
+from perceptual_loss import load_perceptual_loss
 
 
 def get_args():
@@ -68,8 +71,16 @@ def get_args():
                         help="Epochs to linearly increase scheduled sampling probability")
 
     # Latent noise (helps fill in latent space)
-    parser.add_argument("--latent-noise-std", type=float, default=0.0,
+    parser.add_argument("--latent-noise-std", type=float, default=0.5,
                         help="Noise std added to latent z during training (helps fill latent space)")
+
+    # Perceptual loss
+    parser.add_argument("--perceptual-checkpoint", type=str, default=None,
+                        help="Path to pretrained feature extractor checkpoint")
+    parser.add_argument("--perceptual-weight", type=float, default=1.0,
+                        help="Weight for perceptual loss term")
+    parser.add_argument("--recon-weight", type=float, default=0.0,
+                        help="Weight for reconstruction loss (0.0 = perceptual only)")
 
     # System
     parser.add_argument("--device", type=str,
@@ -145,6 +156,17 @@ class DynamicsTrainer:
 
         print(f"Model parameters: {sum(p.numel() for p in self.model.parameters()):,}")
 
+        # Perceptual loss module (optional)
+        self.perceptual_loss = None
+        if args.perceptual_checkpoint:
+            print(f"Loading perceptual loss from {args.perceptual_checkpoint}")
+            self.perceptual_loss = load_perceptual_loss(
+                checkpoint_path=args.perceptual_checkpoint,
+                data_in_channels=self.in_channels,
+                device=self.device,
+            )
+            print(f"Perceptual loss weight: {args.perceptual_weight}")
+
         # Optimizer
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=args.lr)
         self.scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(
@@ -153,8 +175,8 @@ class DynamicsTrainer:
 
         # Logging
         self.history = {
-            "train_loss": [], "train_recon": [], "train_kl": [],
-            "val_loss": [], "val_recon": [], "val_kl": [],
+            "train_loss": [], "train_recon": [], "train_kl": [], "train_perceptual": [],
+            "val_loss": [], "val_recon": [], "val_kl": [], "val_perceptual": [],
             "ss_prob": [],
         }
 
@@ -175,6 +197,7 @@ class DynamicsTrainer:
         total_loss = 0
         total_recon = 0
         total_kl = 0
+        total_perceptual = 0
         num_batches = 0
 
         ss_prob = self.get_ss_prob(epoch)
@@ -201,6 +224,7 @@ class DynamicsTrainer:
             total_step_loss = 0
             total_step_recon = 0
             total_step_kl = 0
+            total_step_perceptual = 0
 
             current_frame = init_frame
 
@@ -227,13 +251,23 @@ class DynamicsTrainer:
 
                 # Loss against ground truth target
                 target = future_targets[:, step]  # [B, C, H, W]
-                loss, recon_loss, kl_loss = vae_loss(
+                _, recon_loss, kl_loss = vae_loss(
                     pred, target, mu, logvar, self.args.kl_weight
                 )
+
+                # Build loss: weighted reconstruction + KL + perceptual
+                loss = self.args.recon_weight * recon_loss + self.args.kl_weight * kl_loss
+
+                # Perceptual loss (optional) - pass context for 3D temporal features
+                perceptual_loss_val = 0.0
+                if self.perceptual_loss is not None:
+                    perceptual_loss_val = self.perceptual_loss(pred, target, context=context_window)
+                    loss = loss + self.args.perceptual_weight * perceptual_loss_val
 
                 total_step_loss += loss
                 total_step_recon += recon_loss.item()
                 total_step_kl += kl_loss.item()
+                total_step_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
 
                 # Scheduled sampling: decide whether to use prediction or ground truth
                 if step < M - 1:
@@ -261,6 +295,7 @@ class DynamicsTrainer:
             total_loss += avg_loss.item()
             total_recon += total_step_recon / M
             total_kl += total_step_kl / M
+            total_perceptual += total_step_perceptual / M
             num_batches += 1
 
             if batch_idx % self.args.log_interval == 0:
@@ -274,6 +309,7 @@ class DynamicsTrainer:
             total_loss / num_batches,
             total_recon / num_batches,
             total_kl / num_batches,
+            total_perceptual / num_batches,
         )
 
     @torch.no_grad()
@@ -282,6 +318,7 @@ class DynamicsTrainer:
         total_loss = 0
         total_recon = 0
         total_kl = 0
+        total_perceptual = 0
         num_batches = 0
 
         for batch in self.val_loader:
@@ -307,13 +344,25 @@ class DynamicsTrainer:
 
             # Loss against first future frame
             target = future_targets[:, 0]
-            loss, recon_loss, kl_loss = vae_loss(
+            _, recon_loss, kl_loss = vae_loss(
                 pred, target, mu, logvar, self.args.kl_weight
             )
+
+            # Build loss: weighted reconstruction + KL + perceptual
+            loss = self.args.recon_weight * recon_loss + self.args.kl_weight * kl_loss
+
+            # Perceptual loss (optional) - pass context for 3D temporal features
+            perceptual_loss_val = 0.0
+            if self.perceptual_loss is not None:
+                # Reshape context_stacked to [B, N, C, H, W] for perceptual loss
+                context_window = context_stacked.view(B, N, C, H, W)
+                perceptual_loss_val = self.perceptual_loss(pred, target, context=context_window)
+                loss = loss + self.args.perceptual_weight * perceptual_loss_val
 
             total_loss += loss.item()
             total_recon += recon_loss.item()
             total_kl += kl_loss.item()
+            total_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
             num_batches += 1
 
             # Store fixed samples for visualization
@@ -328,6 +377,7 @@ class DynamicsTrainer:
             total_loss / num_batches,
             total_recon / num_batches,
             total_kl / num_batches,
+            total_perceptual / num_batches,
         )
 
     @torch.no_grad()
@@ -504,25 +554,36 @@ class DynamicsTrainer:
         print(f"Scheduled sampling: {self.args.ss_steps} steps, "
               f"prob {self.args.ss_start_prob} -> {self.args.ss_end_prob} "
               f"over {self.args.ss_warmup_epochs} epochs")
+        print(f"Loss weights: recon={self.args.recon_weight}, kl={self.args.kl_weight}", end="")
+        if self.perceptual_loss is not None:
+            print(f", perceptual={self.args.perceptual_weight}")
+        else:
+            print()
 
         best_loss = float("inf")
 
         for epoch in range(1, self.args.epochs + 1):
             ss_prob = self.get_ss_prob(epoch)
-            train_loss, train_recon, train_kl = self.train_epoch(epoch)
-            val_loss, val_recon, val_kl = self.evaluate()
+            train_loss, train_recon, train_kl, train_perceptual = self.train_epoch(epoch)
+            val_loss, val_recon, val_kl, val_perceptual = self.evaluate()
 
             self.scheduler.step()
 
             self.history["train_loss"].append(train_loss)
             self.history["train_recon"].append(train_recon)
             self.history["train_kl"].append(train_kl)
+            self.history["train_perceptual"].append(train_perceptual)
             self.history["val_loss"].append(val_loss)
             self.history["val_recon"].append(val_recon)
             self.history["val_kl"].append(val_kl)
+            self.history["val_perceptual"].append(val_perceptual)
             self.history["ss_prob"].append(ss_prob)
 
-            print(f"Epoch {epoch}: train={train_loss:.4f}, val={val_loss:.4f}, ss_prob={ss_prob:.2f}")
+            # Include perceptual in log if active
+            if self.perceptual_loss is not None:
+                print(f"Epoch {epoch}: train={train_loss:.4f} (perc={train_perceptual:.4f}), val={val_loss:.4f}, ss_prob={ss_prob:.2f}")
+            else:
+                print(f"Epoch {epoch}: train={train_loss:.4f}, val={val_loss:.4f}, ss_prob={ss_prob:.2f}")
 
             if val_loss < best_loss:
                 best_loss = val_loss
