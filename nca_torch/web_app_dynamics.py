@@ -690,6 +690,7 @@ HTML_CONTENT = """
                 <button id="playPauseBtn">Pause</button>
                 <button id="stepBtn">Step</button>
                 <button id="resetBtn">Reset</button>
+                <button id="saveLatentBtn">Save Latent</button>
             </div>
 
             <div class="control-row" id="seqControls">
@@ -702,7 +703,6 @@ HTML_CONTENT = """
                 <div class="control-row">
                     <button id="randomLatentBtn">Random Latent</button>
                     <button id="perturbLatentBtn">Perturb Latent</button>
-                    <button id="saveLatentBtn">Save Latent</button>
                     <div class="slider-group">
                         <label>Perturb:</label>
                         <input type="range" id="perturbSlider" min="0.01" max="1.0" step="0.01" value="0.1">
