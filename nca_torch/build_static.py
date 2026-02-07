@@ -495,6 +495,14 @@ def _build_html(cfg):
         .piano-key.selected.black {{ background: #4fc3f7; color: #1a1a2e; box-shadow: 0 0 10px #4fc3f7; }}
         .piano-key .key-hint {{ font-size: 1.1em; }}
 
+        .instrument-select {{
+            background: #1a1a2e; color: #4fc3f7; border: 1px solid #4fc3f7;
+            border-radius: 5px; padding: 6px 10px; font-size: 0.85em;
+            cursor: pointer; outline: none;
+        }}
+        .instrument-select:hover {{ background: #16213e; }}
+        .instrument-loading {{ color: #888; font-size: 0.8em; }}
+
         .controls-with-library {{ display: flex; gap: 15px; justify-content: center; }}
         .controls-with-library > .controls {{ flex: 1; min-width: 0; }}
         .library-panel {{ background: #111827; border: 1px solid #333; border-radius: 8px; width: 200px; display: flex; flex-direction: column; overflow: hidden; flex-shrink: 0; align-self: stretch; }}
@@ -578,6 +586,10 @@ def _build_html(cfg):
                 <div class="control-row" style="margin-top: 10px;">
                     <div class="piano-keyboard" id="pianoKeyboard"></div>
                 </div>
+                <div class="control-row">
+                    <select id="instrumentSelect" class="instrument-select"></select>
+                    <span id="instrumentStatus" class="instrument-loading"></span>
+                </div>
 
                 <div class="control-row">
                     <div class="slider-group">
@@ -601,6 +613,7 @@ def _build_html(cfg):
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tone@14/build/Tone.js"></script>
     <script>
     (function() {{
     "use strict";
@@ -945,69 +958,127 @@ def _build_html(cfg):
     // Piano keyboard
     // -----------------------------------------------------------------------
     const NOTES = [
-        {{ note: 'F',  key: 'a', type: 'white', freq: 349.23 }},
-        {{ note: 'F#', key: 'w', type: 'black', freq: 369.99 }},
-        {{ note: 'G',  key: 's', type: 'white', freq: 392.00 }},
-        {{ note: 'G#', key: 'e', type: 'black', freq: 415.30 }},
-        {{ note: 'A',  key: 'd', type: 'white', freq: 440.00 }},
-        {{ note: 'A#', key: 'r', type: 'black', freq: 466.16 }},
-        {{ note: 'B',  key: 'f', type: 'white', freq: 493.88 }},
-        {{ note: 'C',  key: 'g', type: 'white', freq: 523.25 }},
-        {{ note: 'C#', key: 'y', type: 'black', freq: 554.37 }},
-        {{ note: 'D',  key: 'h', type: 'white', freq: 587.33 }},
-        {{ note: 'D#', key: 'u', type: 'black', freq: 622.25 }},
-        {{ note: 'E',  key: 'j', type: 'white', freq: 659.25 }},
-        {{ note: 'F',  key: 'k', type: 'white', freq: 698.46 }},
-        {{ note: 'F#', key: 'o', type: 'black', freq: 739.99 }},
-        {{ note: 'G',  key: 'l', type: 'white', freq: 783.99 }},
-        {{ note: 'G#', key: 'p', type: 'black', freq: 830.61 }},
-        {{ note: 'A',  key: ';', type: 'white', freq: 880.00 }},
-        {{ note: 'A#', key: '[', type: 'black', freq: 932.33 }},
-        {{ note: 'B',  key: "'", type: 'white', freq: 987.77 }},
+        {{ note: 'F',  tone: 'F4',  key: 'a', type: 'white' }},
+        {{ note: 'F#', tone: 'F#4', key: 'w', type: 'black' }},
+        {{ note: 'G',  tone: 'G4',  key: 's', type: 'white' }},
+        {{ note: 'G#', tone: 'G#4', key: 'e', type: 'black' }},
+        {{ note: 'A',  tone: 'A4',  key: 'd', type: 'white' }},
+        {{ note: 'A#', tone: 'A#4', key: 'r', type: 'black' }},
+        {{ note: 'B',  tone: 'B4',  key: 'f', type: 'white' }},
+        {{ note: 'C',  tone: 'C5',  key: 'g', type: 'white' }},
+        {{ note: 'C#', tone: 'C#5', key: 'y', type: 'black' }},
+        {{ note: 'D',  tone: 'D5',  key: 'h', type: 'white' }},
+        {{ note: 'D#', tone: 'D#5', key: 'u', type: 'black' }},
+        {{ note: 'E',  tone: 'E5',  key: 'j', type: 'white' }},
+        {{ note: 'F',  tone: 'F5',  key: 'k', type: 'white' }},
+        {{ note: 'F#', tone: 'F#5', key: 'o', type: 'black' }},
+        {{ note: 'G',  tone: 'G5',  key: 'l', type: 'white' }},
+        {{ note: 'G#', tone: 'G#5', key: 'p', type: 'black' }},
+        {{ note: 'A',  tone: 'A5',  key: ';', type: 'white' }},
+        {{ note: 'A#', tone: 'A#5', key: '[', type: 'black' }},
+        {{ note: 'B',  tone: 'B5',  key: "'", type: 'white' }},
     ];
     const keyToSlot = {{}};
     NOTES.forEach((n, i) => {{ keyToSlot[n.key] = i; }});
 
-    // Audio
-    let audioCtx = null;
-    const activeTones = {{}};
-    function ensureAudioCtx() {{
-        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    // -----------------------------------------------------------------------
+    // Instrument samples (Tone.js Sampler)
+    // -----------------------------------------------------------------------
+    const SAMPLE_BASE = 'https://nbrosowsky.github.io/tonejs-instruments/samples/';
+
+    // Sharp-to-filename: F#4 -> Fs4.mp3
+    function noteToFile(n) {{
+        return n.replace('#', 's') + '.mp3';
     }}
+
+    // Per-instrument sample note sets (subset — Tone.Sampler pitch-shifts to fill gaps)
+    const INSTRUMENT_SAMPLES = {{
+        'piano':            ['A1','A2','A3','A4','A5','A6','C1','C2','C3','C4','C5','C6','D#1','D#2','D#3','D#4','D#5','D#6','F#1','F#2','F#3','F#4','F#5','F#6'],
+        'bass-electric':    ['A#1','A#2','A#3','A#4','C#1','C#2','C#3','C#4','E1','E2','E3','E4','G1','G2','G3','G4'],
+        'bassoon':          ['A2','A3','A4','C3','C4','C5','E4','G2','G3','G4'],
+        'cello':            ['A2','A3','A4','C2','C3','C4','C5','D#2','D#3','D#4','F#3','F#4','G#2','G#3','G#4'],
+        'clarinet':         ['A#3','A#4','A#5','D3','D4','D5','D6','F3','F4','F5','F#6'],
+        'contrabass':       ['A2','A#1','B3','C2','C#3','D2','E2','E3','F#1','F#2','G1','G#2','G#3'],
+        'flute':            ['A4','A5','A6','C4','C5','C6','C7','E4','E5','E6'],
+        'french-horn':      ['A1','A3','C2','C4','D3','D5','D#2','F3','F5','G2'],
+        'guitar-acoustic':  ['A2','A3','A4','C3','C4','C5','D#2','D#3','E2','E3','E4','F#2','F#3','F#4','G#2','G#3','G#4'],
+        'guitar-electric':  ['A2','A3','A4','A5','C3','C4','C5','C6','C#2','D#3','D#4','D#5','E2','F#2','F#3','F#4','F#5'],
+        'guitar-nylon':     ['A2','A3','A4','A5','B1','B2','B3','B4','C#3','C#4','C#5','D2','D3','D5','E2','E3','E4','E5','F#2','F#3','F#4','F#5','G3'],
+        'harmonium':        ['A2','A3','A4','C2','C3','C4','C5','D#2','D#3','D#4','F#2','F#3','G#2','G#3','G#4'],
+        'harp':             ['A2','A4','A6','B1','B3','B5','C3','C5','D2','D4','D6','E1','E3','E5','F2','F4','F6','G1','G3','G5'],
+        'organ':            ['A1','A2','A3','A4','A5','C1','C2','C3','C4','C5','C6','D#1','D#2','D#3','D#4','D#5','F#1','F#2','F#3','F#4','F#5'],
+        'saxophone':        ['A4','A5','A#3','A#4','C4','C5','C#3','D3','D4','D5','D#3','D#4','E3','E4','E5','F3','F4','F5','F#3','F#4','G3','G4','G5','G#3','G#4'],
+        'trombone':         ['A#1','A#2','A#3','C3','C4','C#2','C#4','D3','D4','D#2','D#3','D#4','F2','F3','F4','G#2','G#3'],
+        'trumpet':          ['A3','A5','A#4','C4','C6','D5','D#4','F3','F4','F5','G4'],
+        'tuba':             ['A#1','A#2','A#3','D3','D4','D#2','F1','F2','F3'],
+        'violin':           ['A3','A4','A5','A6','C4','C5','C6','E4','E5','E6','G4','G5','G6'],
+        'xylophone':        ['C5','C6','C7','C8','G4','G5','G6','G7'],
+    }};
+
+    const INSTRUMENT_NAMES = Object.keys(INSTRUMENT_SAMPLES).sort();
+
+    let currentSampler = null;
+    let samplerReady = false;
+
+    function loadInstrument(name) {{
+        samplerReady = false;
+        const statusEl = document.getElementById('instrumentStatus');
+        statusEl.textContent = 'Loading...';
+
+        if (currentSampler) {{
+            currentSampler.dispose();
+            currentSampler = null;
+        }}
+
+        const notes = INSTRUMENT_SAMPLES[name];
+        const urls = {{}};
+        notes.forEach(n => {{ urls[n] = noteToFile(n); }});
+
+        currentSampler = new Tone.Sampler({{
+            urls: urls,
+            baseUrl: SAMPLE_BASE + name + '/',
+            onload: () => {{
+                samplerReady = true;
+                statusEl.textContent = '';
+            }},
+            onerror: () => {{
+                statusEl.textContent = 'Failed to load';
+            }},
+        }}).toDestination();
+    }}
+
+    // Populate instrument dropdown
+    const instrumentSelect = document.getElementById('instrumentSelect');
+    INSTRUMENT_NAMES.forEach(name => {{
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = name;
+        instrumentSelect.appendChild(opt);
+    }});
+    instrumentSelect.value = 'piano';
+    instrumentSelect.addEventListener('change', () => {{
+        loadInstrument(instrumentSelect.value);
+    }});
+
+    // Audio helpers using Tone.Sampler
+    const activeNotes = {{}};  // slot index -> tone name
     function startTone(idx) {{
-        if (activeTones[idx]) return;
-        ensureAudioCtx();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = NOTES[idx].freq;
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        activeTones[idx] = {{ osc, gain }};
+        if (!samplerReady || activeNotes[idx]) return;
+        const noteName = NOTES[idx].tone;
+        activeNotes[idx] = noteName;
+        Tone.start();
+        currentSampler.triggerAttack(noteName);
     }}
     function stopTone(idx) {{
-        const tone = activeTones[idx];
-        if (!tone) return;
-        const t = audioCtx.currentTime;
-        tone.gain.gain.setValueAtTime(tone.gain.gain.value, t);
-        tone.gain.gain.exponentialRampToValueAtTime(0.001, t + 0.08);
-        tone.osc.stop(t + 0.08);
-        delete activeTones[idx];
+        if (!activeNotes[idx]) return;
+        const noteName = activeNotes[idx];
+        delete activeNotes[idx];
+        if (currentSampler) currentSampler.triggerRelease(noteName);
     }}
-    function playTone(freq) {{
-        ensureAudioCtx();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.type = 'sine';
-        osc.frequency.value = freq;
-        gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.15);
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
+    function playTone(idx) {{
+        if (!samplerReady) return;
+        Tone.start();
+        currentSampler.triggerAttackRelease(NOTES[idx].tone, 0.15);
     }}
 
     const pianoKeys = [];
@@ -1022,7 +1093,7 @@ def _build_html(cfg):
         key.appendChild(keyHint);
 
         key.addEventListener('click', () => {{
-            playTone(NOTES[i].freq);
+            playTone(i);
             if (filledSlots.has(i)) {{
                 if (selectedSlots.has(i)) {{
                     selectedSlots.delete(i);
@@ -1341,10 +1412,11 @@ def _build_html(cfg):
             return;
         }}
 
-        // Initialize library
+        // Initialize library and instrument
         loadLibraryFromStorage();
         loadSlotsFromManifest();
         renderLibraryPanel();
+        loadInstrument('piano');
 
         // Load first sequence
         statusEl.textContent = 'Loading first sequence...';
