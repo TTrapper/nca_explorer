@@ -515,52 +515,46 @@ def generate_dataset(
 def generate_moving_circle_sequence(
     size: int = 32,
     frames: int = 64,
-    radius: int = 3,
+    circles: list = None,
     speed: float = 1.0,
-    start_x: int = None,
-    start_y: int = None,
+    direction: float = -np.pi / 2,
     bg_color: tuple = (0, 0, 0),
-    circle_color: tuple = (255, 255, 255),
 ) -> np.ndarray:
     """
-    Generate a single sequence of a circle moving upward with toroidal wrapping.
-
-    This is a simple toy dataset for sanity checking dynamics learning.
+    Generate a sequence of circles moving in the same direction with toroidal wrapping.
 
     Args:
         size: Grid size (width and height)
         frames: Number of frames to generate
-        radius: Circle radius in pixels
-        speed: Pixels to move up per frame
-        start_x: Starting x position (default: center)
-        start_y: Starting y position (default: center)
+        circles: List of (x, y, radius, color) tuples. Each circle has its own
+                 position, size, and color, but all share the same velocity.
+                 Default: single white circle at center with radius 3.
+        speed: Pixels to move per frame (shared by all circles)
+        direction: Movement angle in radians (0=right, pi/2=down, -pi/2=up)
         bg_color: Background color (RGB)
-        circle_color: Circle color (RGB)
 
     Returns:
         Sequence of frames [frames, size, size, 3]
     """
-    if start_x is None:
-        start_x = size // 2
-    if start_y is None:
-        start_y = size // 2
+    if circles is None:
+        circles = [(size // 2, size // 2, 3, (255, 255, 255))]
+
+    dx = np.cos(direction) * speed
+    dy = np.sin(direction) * speed
+
+    positions = [(float(x), float(y)) for x, y, _, _ in circles]
 
     sequence = []
-    y_pos = float(start_y)
-
     for _ in range(frames):
-        # Create frame
         img = np.full((size, size, 3), bg_color, dtype=np.uint8)
 
-        # Draw circle at current position (moving UP means decreasing y)
-        x = int(start_x)
-        y = int(y_pos) % size  # Toroidal wrap
-        cv2.circle(img, (x, y), radius, circle_color, -1)
+        for i, (_, _, radius, color) in enumerate(circles):
+            px, py = positions[i]
+            cv2.circle(img, (int(px) % size, int(py) % size), radius, color, -1)
 
         sequence.append(img)
 
-        # Move up (decrease y, with wrapping)
-        y_pos = (y_pos - speed) % size
+        positions = [((px + dx) % size, (py + dy) % size) for px, py in positions]
 
     return np.stack(sequence)
 
@@ -572,17 +566,18 @@ def generate_toy_dataset(
     variation: str = "fixed",
 ) -> np.ndarray:
     """
-    Generate a toy dataset of circles moving upward.
+    Generate a toy dataset of circles moving in a shared direction.
 
     Args:
         num_sequences: Number of sequences to generate
         frames_per_seq: Frames per sequence
         size: Grid size
         variation: Type of variation:
-            - "fixed": All sequences identical (single circle, center start, speed=1)
+            - "fixed": All sequences identical (single circle, center, up, speed=1)
             - "position": Vary starting position
-            - "speed": Vary speed (1-3 pixels/frame)
-            - "all": Vary position, speed, radius, and colors
+            - "speed": Vary speed
+            - "direction": Vary direction
+            - "all": Vary number of circles, direction, speed, sizes, colors
 
     Returns:
         Dataset array [num_sequences, frames_per_seq, size, size, 3]
@@ -595,40 +590,55 @@ def generate_toy_dataset(
             seq = generate_moving_circle_sequence(
                 size=size,
                 frames=frames_per_seq,
-                radius=3,
-                speed=1.0,
             )
         elif variation == "position":
             # Vary starting position only
+            x = np.random.randint(4, size - 4)
+            y = np.random.randint(0, size)
             seq = generate_moving_circle_sequence(
                 size=size,
                 frames=frames_per_seq,
-                radius=3,
-                speed=1.0,
-                start_x=np.random.randint(4, size - 4),
-                start_y=np.random.randint(0, size),
+                circles=[(x, y, 3, (255, 255, 255))],
             )
         elif variation == "speed":
             # Vary speed only
             seq = generate_moving_circle_sequence(
                 size=size,
                 frames=frames_per_seq,
-                radius=3,
                 speed=np.random.uniform(0.5, 2.0),
             )
-        elif variation == "all":
-            # Vary everything
-            bg_color = tuple(np.random.randint(0, 50, 3).tolist())
-            circle_color = random_color()
+        elif variation == "direction":
+            # Vary direction only
             seq = generate_moving_circle_sequence(
                 size=size,
                 frames=frames_per_seq,
-                radius=np.random.randint(2, 5),
-                speed=np.random.uniform(0.5, 2.0),
-                start_x=np.random.randint(4, size - 4),
-                start_y=np.random.randint(0, size),
+                direction=np.random.uniform(0, 2 * np.pi),
+            )
+        elif variation == "all":
+            # Vary everything: number of circles, direction, speed, sizes, colors
+            bg_color = tuple(np.random.randint(0, 50, 3).tolist())
+            num_circles = np.random.randint(1, 6)
+            direction = np.random.uniform(0, 2 * np.pi)
+            speed = np.random.uniform(0.5, 2.0)
+
+            circles = []
+            for _ in range(num_circles):
+                x = np.random.randint(0, size)
+                y = np.random.randint(0, size)
+                radius = np.random.randint(2, 5)
+                color = random_color()
+                # Ensure contrast with background
+                while np.sum(np.abs(np.array(color) - np.array(bg_color))) < 200:
+                    color = random_color()
+                circles.append((x, y, radius, color))
+
+            seq = generate_moving_circle_sequence(
+                size=size,
+                frames=frames_per_seq,
+                circles=circles,
+                speed=speed,
+                direction=direction,
                 bg_color=bg_color,
-                circle_color=circle_color,
             )
         else:
             raise ValueError(f"Unknown variation: {variation}")
@@ -651,10 +661,11 @@ def main():
     parser.add_argument("--preview", action="store_true",
                         help="Preview a few simulations before generating")
     parser.add_argument("--toy", type=str, default=None,
-                        choices=["fixed", "position", "speed", "all"],
-                        help="Generate toy dataset (circle moving up) instead of boids. "
+                        choices=["fixed", "position", "speed", "direction", "all"],
+                        help="Generate toy dataset instead of boids. "
                              "Variations: fixed (identical), position (vary start), "
-                             "speed (vary velocity), all (vary everything)")
+                             "speed (vary velocity), direction (vary angle), "
+                             "all (vary count, direction, speed, sizes, colors)")
     parser.add_argument("--behavior", type=str, default=None,
                         choices=["flock", "predator_prey", "particle_life"],
                         help="Generate only a specific behavior type (default: random mix)")
