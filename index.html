@@ -1,0 +1,1234 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Neuromusical Cellular Automata</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            background: #1a1a2e;
+            color: #eee;
+            font-family: 'Segoe UI', system-ui, sans-serif;
+            min-height: 100vh;
+            padding: 20px;
+        }
+        h1 { color: #4fc3f7; margin-bottom: 5px; text-align: center; }
+        .subtitle { color: #888; text-align: center; margin-bottom: 20px; }
+
+        .main-container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .viewers {
+            display: flex;
+            justify-content: center;
+            gap: 40px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .viewer {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .viewer-label {
+            font-size: 1.1em;
+            margin-bottom: 10px;
+            color: #4fc3f7;
+        }
+
+        canvas {
+            border: 2px solid #4fc3f7;
+            background: #000;
+            image-rendering: pixelated;
+        }
+
+        .context-section {
+            background: #16213e;
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+        }
+
+        .context-section h3 {
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            font-size: 0.9em;
+        }
+
+        .context-frames {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+
+        .context-frame {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .context-frame span {
+            font-size: 0.75em;
+            color: #888;
+            margin-top: 5px;
+        }
+
+        .controls {
+            background: #16213e;
+            padding: 20px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .control-row {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+
+        button {
+            background: #4fc3f7;
+            color: #1a1a2e;
+            border: none;
+            padding: 10px 20px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        button:hover { background: #81d4fa; }
+        button:disabled { background: #555; cursor: not-allowed; }
+        button.active-mode { background: #fff; }
+
+        .slider-group {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider-group label {
+            color: #aaa;
+            font-size: 0.9em;
+            min-width: 80px;
+        }
+
+        .slider-group input[type="range"] {
+            width: 150px;
+        }
+
+        .slider-group .value {
+            color: #4fc3f7;
+            font-family: monospace;
+            min-width: 40px;
+        }
+
+        .info {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            font-size: 0.9em;
+            color: #aaa;
+        }
+
+        .info span {
+            color: #4fc3f7;
+        }
+
+        .status {
+            text-align: center;
+            font-size: 0.85em;
+            color: #888;
+            margin-top: 10px;
+        }
+
+        #connStatus.connected { color: #4caf50; }
+        #connStatus.disconnected { color: #f44336; }
+
+        .piano-keyboard { position: relative; height: 120px; display: flex; justify-content: center; }
+        .piano-key {
+            position: relative; border: 1px solid #333; border-radius: 0 0 4px 4px;
+            cursor: pointer; display: flex; flex-direction: column;
+            justify-content: flex-end; align-items: center; padding-bottom: 4px;
+            font-size: 0.65em; font-weight: bold; user-select: none;
+        }
+        .piano-key.white { width: 44px; height: 110px; background: #556; color: #999; z-index: 1; }
+        .piano-key.black { width: 30px; height: 70px; background: #111; color: #666; z-index: 2; margin-left: -15px; margin-right: -15px; }
+        .piano-key.filled { color: #4fc3f7; }
+        .piano-key.filled.white { background: #668; }
+        .piano-key.filled.black { background: #224; }
+        .piano-key.selected.white { background: #4fc3f7; color: #1a1a2e; box-shadow: 0 0 10px #4fc3f7; }
+        .piano-key.selected.black { background: #4fc3f7; color: #1a1a2e; box-shadow: 0 0 10px #4fc3f7; }
+        .piano-key .key-hint { font-size: 1.1em; }
+
+        .instrument-select {
+            background: #1a1a2e; color: #4fc3f7; border: 1px solid #4fc3f7;
+            border-radius: 5px; padding: 6px 10px; font-size: 0.85em;
+            cursor: pointer; outline: none;
+        }
+        .instrument-select:hover { background: #16213e; }
+        .instrument-loading { color: #888; font-size: 0.8em; }
+
+
+        .noise-meter {
+            display: flex; flex-direction: column; align-items: center;
+            gap: 4px; margin-left: 10px; user-select: none;
+        }
+        .noise-meter-label { font-size: 0.7em; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }
+        .noise-meter-track {
+            width: 18px; height: 90px; background: #222; border-radius: 4px;
+            border: 1px solid #444; position: relative; overflow: hidden;
+        }
+        .noise-meter-fill {
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: linear-gradient(to top, #4fc3f7, #f44336);
+            border-radius: 0 0 3px 3px; transition: height 0.1s;
+        }
+        .noise-meter-value { font-size: 0.75em; color: #4fc3f7; font-family: monospace; }
+
+        .article {
+            max-width: 720px;
+            margin: 60px auto 40px;
+            line-height: 1.7;
+            font-size: 1.05em;
+        }
+        .article h2 {
+            color: #4fc3f7;
+            margin-top: 48px;
+            margin-bottom: 12px;
+            font-size: 1.6em;
+            border-bottom: 1px solid #333;
+            padding-bottom: 8px;
+        }
+        .article p {
+            color: #ccc;
+            margin-bottom: 16px;
+        }
+        .article hr {
+            border: none;
+            border-top: 1px solid #333;
+            margin: 48px 0;
+        }
+        .article ul {
+            color: #ccc;
+            margin-bottom: 16px;
+            padding-left: 24px;
+        }
+        .article li {
+            margin-bottom: 8px;
+        }
+        .article-img {
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin: 24px 0;
+        }
+        .article-img img {
+            max-width: 400px;
+            height: auto;
+            image-rendering: pixelated;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }
+        .article code {
+            background: #2a2a4e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }
+        .article strong {
+            color: #4fc3f7;
+        }
+        .article em {
+            color: #aaa;
+            font-style: italic;
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <h1>Neuromusical Cellular Automata</h1>
+        <p class="subtitle">Play the piano to explore the space of Neural Cellular Automata. Each note samples a latent space which then generates an NCA on the fly!</p>
+
+        <div class="viewers">
+            <div class="viewer" id="specViewer" style="display: block;">
+                <div class="viewer-label">Spectrogram</div>
+                <img id="specImg" width="256" height="256" style="border: 2px solid #4fc3f7; background: #000; image-rendering: pixelated;" />
+            </div>
+            <div class="viewer">
+                <div class="viewer-label">NCA Prediction</div>
+                <canvas id="ncaCanvas" width="256" height="256"></canvas>
+            </div>
+        </div>
+
+        <div class="controls-container" style="display: flex; justify-content: center;">
+            <div class="controls">
+
+                <div class="control-row">
+                    <button id="playPauseBtn">Pause</button>
+                    <button id="stepBtn">Step</button>
+                    <button id="resetBtn">Reset</button>
+                    
+                </div>
+
+                <div class="control-row">
+                    <button id="randomLatentBtn">Random Latent</button>
+                </div>
+
+
+                <div class="control-row" style="margin-top: 10px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-right: 15px;">
+                        <select id="instrumentSelect" class="instrument-select"></select>
+                        <span id="instrumentStatus" class="instrument-loading"></span>
+                    </div>
+                    <div class="piano-keyboard" id="pianoKeyboard"></div>
+                    <div class="noise-meter">
+                        <div class="noise-meter-label">Perturbation</div>
+                        <div class="noise-meter-track">
+                            <div class="noise-meter-fill" id="noiseMeterFill"></div>
+                        </div>
+                        <div class="noise-meter-value" id="noiseMeterValue">1.0</div>
+                    </div>
+                </div>
+
+                <div class="info">
+                    
+                    <div>Frame: <span id="frameNum">0</span></div>
+                    <div>Latent: <span id="latentSource">encoded</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="status">
+            <span id="connStatus" class="disconnected">Loading...</span>
+        </div>
+
+        <div class="article">
+            <hr>
+            
+            <p>The demo above generates a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint.</p>
+            
+            <h2>How to Play</h2>
+            
+            <ul>
+            <li><strong>Piano keys</strong>: Click or use keyboard (A-L for white keys, W/E/R/Y/U/O/P for black keys). Each note loads a different latent vector that generates a unique NCA.</li>
+            <li><strong>Chords</strong>: Hold multiple keys to blend their latents together, creating hybrid dynamics.</li>
+            <li><strong>Instruments</strong>: Use the dropdown to switch between piano, violin, guitar, and more. Each instrument produces distinct visual behaviors.</li>
+            <li><strong>Perturbation</strong>: Defaults to max. Press number keys 1-9 to reduce, or 0 for max. Higher values create more chaotic, unpredictable patterns. Press the same key twice to toggle off.</li>
+            <li><strong>Random Latent</strong>: Click "Random Latent" to explore completely random points in the learned space.</li>
+            </ul>
+            
+            <hr>
+            
+            <h2>Cellular Automata</h2>
+            
+            <p>Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.</p>
+            
+            <p>Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions. For example, a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood, giving us 2^10 (1024) entries per rule. Each entry maps the 9-cell state at time <em>t</em> to the center cell's state at time <em>t+1</em>. The rule is then convolved over the entire grid to get the new state at each time step.</p>
+            
+            <div class="article-img"><img src="assets/rainbow_gliders.gif" alt="Rainbow Gliders" style="width: 512px; height: 512px;" /></div>
+            
+            <p><strong>Neural Cellular Automata (NCA)</strong> replace the discrete update rules of CAs with a small neural network, allowing the system to learn its own dynamics from data. A neural network reads local values and outputs updated values for the next time step, which is fed back into the network at time <em>t+1</em>. This makes an NCA effectively a recurrent CNN! NCAs can learn to grow, regenerate, and sustain surprisingly complex dynamical patterns.</p>
+            
+            <p>The space of all possible NCAs is infinite, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" below - stable little colorful blobs that move!).</p>
+            
+            
+            <hr>
+            
+            <h2>Learned Latent Space</h2>
+            
+            <p>Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to <em>generate</em> NCAs. And that's what this Neuromusical Cellular Automata does:</p>
+            
+            <p>This architecture uses a <strong>variational autoencoder (VAE)</strong> to map context frames into a low-dimensional latent space. A <strong>hypernetwork</strong> then transforms each latent vector into a unique set of NCA weights. This means every point in the latent space corresponds to a different cellular automaton with its own dynamics.</p>
+            
+            <hr>
+            
+            <h2>Dynamics</h2>
+            
+            <p>Because NCAs are recurrent, they can learn dynamics and movement. Here is an example of a model trained on sequences of frames from dynamic simulations. Given a few context frames as input, the model learns to predict how the system evolves over time. Each training sequence captures a different behavior, forcing the model to internalize the underlying rules of motion rather than memorizing individual frames.</p>
+            
+            <p>The ground truth is shown on the right with the model predictions on the left:</p>
+            
+            <div class="article-img"><img src="assets/groundtruth-1.gif" alt="Ground Truth Example 1" style="width: 512px; height: 256px;" /></div>
+            <div class="article-img"><img src="assets/groundtruth-2.gif" alt="Ground Truth Example 2" style="width: 512px; height: 256px;" /></div>
+            <div class="article-img"><img src="assets/groundtruth-3.gif" alt="Ground Truth Example 3" style="width: 512px; height: 256px;" /></div>
+            
+            <p>As you can see, the NCA does capture the general size, color, and motion of the objects, although it tends to blur over time as it struggles to guess the exact next frame. Remember this is a <em>tiny</em> little network because it needs to fit on my old laptop's GTX 960 and train in reasonable time. And anyway, I kind of like how the objects smear out over time and generate interesting patterns - it makes the latent space more surprising.</p>
+            
+            <hr>
+            
+            <h2>Music</h2>
+            
+            <p>The training data for the Neuromusical Cellular Automata and the demo at the top of this page is generated by pairing audio with deterministic visualizations.</p>
+            
+            <div class="article-img"><img src="assets/spectrogram_piano.gif" alt="Ground Truth Example 1" style="width: 512px; height: 256px;" /></div>
+            
+            <p>For each instrument sample (piano, violin, etc.), we extract audio features: detected harmonics, loudness (RMS), and spectral brightness. These features drive the "circles" visualization where each harmonic becomes a colored circle - low frequencies appear warm (red/orange) near the center, high frequencies appear cool (blue) toward the edges. Circle size pulses with loudness, and positions orbit based on harmonic relationships.</p>
+            
+            <div class="article-img"><img src="assets/spectrogram_xylophone.gif" alt="Ground Truth Example 2" style="width: 512px; height: 256px;" /></div>
+            
+            <p>The first frame of each training sequence is a <strong>mel spectrogram</strong> (a 2D image of frequency vs. time), which the encoder compresses into a 64-dimensional latent vector. The decoder, a hypernetwork, transforms this latent into NCA weights that generate the subsequent circle animation frames.</p>
+            
+            <div class="article-img"><img src="assets/spectrogram_clarinet.gif" alt="Ground Truth Example 3" style="width: 512px; height: 256px;" /></div>
+            
+            <p>For the piano interface, we pre-generate spectrograms for all 19 notes (F4 through B5) across every instrument. Each spectrogram is encoded into its latent vector and stored in a manifest. When you press a piano key, the corresponding latent is loaded; pressing multiple keys (a chord) averages their latents together. This blended latent then drives the NCA in real-time, creating visualizations that interpolate between the learned behaviors of each note.</p>
+            
+            <hr>
+            
+            <h2>Future Potential</h2>
+            
+            <p>This approach opens several interesting directions:</p>
+            
+            <ul>
+            <li>The latent space could be conditioned on higher-level descriptions, allowing <strong>natural language control</strong> over the generated dynamics</li>
+            <li>Larger grids and deeper NCA architectures could capture more complex phenomena</li>
+            <li>The ability for NCAs to track/produce <strong>agentic behavior</strong> on the grid is particularly fascinating</li>
+            </ul>
+            
+            <p>I did early experiments with boids exhibiting various behaviors such as flocking or predator-prey dynamics, but this proved too challenging for my tiny 2-layer conv nets. It would be fascinating to see if an NCA could learn theory of mind to generate the actions of human players in Atari games, or even more complex environments and life-like behaviors.</p>
+            
+            <p>Broadly, music offers a compelling interface for exploring high-dimensional latent spaces. The simple circle visualizations here map audio features to color and motion, but richer correspondences are possible. Imagine learning a shared embedding where the space of complex music aligns with the space of natural images or video - not through superficial features, but through deeper semantic structure: tension and resolution in a symphony mapping to dramatic arcs in film, the texture of a jazz improvisation corresponding to the organic chaos of a forest canopy, or the emotional trajectory of a song finding its visual analogue in shifting landscapes. Contrastive learning on large audio-visual datasets could discover these cross-modal correspondences, letting music become a navigation tool for exploring generative models of images, video, or even text - playing a melody to traverse a space of scenes that feel emotionally consonant with the sound.</p>
+            
+            <p>The combination of neural cellular automata with learned latent spaces suggests a fascinating paradigm: compact, local update rules that are themselves generated by a learned model, producing an open-ended family of emergent systems from a single trained network.</p>
+            
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/tone@14/build/Tone.js"></script>
+    
+    <script>
+    (function() {
+    "use strict";
+
+    // -----------------------------------------------------------------------
+    // Config (filled from manifest at runtime)
+    // -----------------------------------------------------------------------
+    const GITHUB_PAGES = true;
+    let width = 0, height = 0, channels = 0;
+    let contextFramesCount = 0, numSteps = 0;
+    let latentDim = 0, gridChannels = 0;
+    let numSequences = 0;
+    let manifest = null;
+
+    // -----------------------------------------------------------------------
+    // Runtime state
+    // -----------------------------------------------------------------------
+    let decodeSession = null, ncaStepSession = null;
+    let currentSeqIdx = 0, currentFrameIdx = 0;
+    let isPlaying = true;
+    let playbackSpeed = 1.0;
+    let currentMode = GITHUB_PAGES ? 'latent' : 'sequence';
+    let isLoading = false;  // true while selectSequence/decodeLatent in progress
+    let noiseLevel = 1.0;   // default to max; keys 1-9 map to 0.1-0.9, key 0 = 1.0
+
+    // Current latent & decoded params
+    let currentZ = null;           // Float32Array [latentDim]
+    let cachedParams = null;       // { layer1_w, layer1_b, layer2_w, layer2_b } ort.Tensor
+    let currentNcaFrame = null;    // Float32Array [C*H*W] in [0,1]
+
+    // Ground truth data for current sequence
+    let gtData = null;             // Uint8Array [T*H*W*C]
+    let gtFrameCount = 0;
+
+    // Slot embeddings (piano) - loaded from instrument_embeddings
+    const slotEmbeddings = new Array(19).fill(null);   // array | null
+    const slotActive = new Array(19).fill(false);      // which slots are pressed
+    let currentInstrument = 'piano';
+
+    // Canvas refs
+    const gtCanvas = GITHUB_PAGES ? null : document.getElementById('gtCanvas');
+    const ncaCanvas = document.getElementById('ncaCanvas');
+    const gtCtx = gtCanvas ? gtCanvas.getContext('2d') : null;
+    const ncaCtx = ncaCanvas.getContext('2d');
+    let contextCanvases = [];
+
+    // -----------------------------------------------------------------------
+    // Utilities
+    // -----------------------------------------------------------------------
+    function randn() {
+        const u1 = Math.random(), u2 = Math.random();
+        return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }
+
+    function randnArray(n) {
+        const arr = new Float32Array(n);
+        for (let i = 0; i < n; i++) arr[i] = randn();
+        return arr;
+    }
+
+    function sigmoid(x) {
+        return 1 / (1 + Math.exp(-x));
+    }
+
+    // -----------------------------------------------------------------------
+    // Rendering
+    // -----------------------------------------------------------------------
+    function renderFrame(ctx, canvas, pixels, w, h, c) {
+        const displayW = canvas.width;
+        const displayH = canvas.height;
+        const imageData = ctx.createImageData(displayW, displayH);
+        const scaleX = displayW / w;
+        const scaleY = displayH / h;
+
+        for (let y = 0; y < displayH; y++) {
+            for (let x = 0; x < displayW; x++) {
+                const srcX = Math.floor(x / scaleX);
+                const srcY = Math.floor(y / scaleY);
+                const srcIdx = (srcY * w + srcX) * c;
+                const dstIdx = (y * displayW + x) * 4;
+
+                if (c === 3) {
+                    imageData.data[dstIdx]     = pixels[srcIdx];
+                    imageData.data[dstIdx + 1] = pixels[srcIdx + 1];
+                    imageData.data[dstIdx + 2] = pixels[srcIdx + 2];
+                } else {
+                    imageData.data[dstIdx]     = pixels[srcIdx];
+                    imageData.data[dstIdx + 1] = pixels[srcIdx];
+                    imageData.data[dstIdx + 2] = pixels[srcIdx];
+                }
+                imageData.data[dstIdx + 3] = 255;
+            }
+        }
+        ctx.putImageData(imageData, 0, 0);
+    }
+
+    function renderNcaCanvas() {
+        if (!currentNcaFrame) return;
+        // currentNcaFrame: float32 [C, H, W] in CHW order, values [0,1]
+        const pixels = new Uint8Array(height * width * channels);
+        for (let ch = 0; ch < channels; ch++) {
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const srcIdx = ch * height * width + y * width + x;
+                    const dstIdx = (y * width + x) * channels + ch;
+                    pixels[dstIdx] = Math.min(255, Math.max(0, Math.round(currentNcaFrame[srcIdx] * 255)));
+                }
+            }
+        }
+        renderFrame(ncaCtx, ncaCanvas, pixels, width, height, channels);
+    }
+
+    function renderGtCanvas() {
+        if (GITHUB_PAGES || !gtData || !gtCtx) return;
+        const offset = (contextFramesCount + currentFrameIdx) * height * width * channels;
+        const end = offset + height * width * channels;
+        if (end > gtData.length) {
+            // Past the end — black
+            const pixels = new Uint8Array(height * width * channels);
+            renderFrame(gtCtx, gtCanvas, pixels, width, height, channels);
+            return;
+        }
+        const pixels = gtData.subarray(offset, end);
+        renderFrame(gtCtx, gtCanvas, pixels, width, height, channels);
+    }
+
+    function renderContextFrames() {
+        if (GITHUB_PAGES || !gtData) return;
+        for (let i = 0; i < contextFramesCount && i < contextCanvases.length; i++) {
+            const offset = i * height * width * channels;
+            const end = offset + height * width * channels;
+            if (end > gtData.length) break;
+            const pixels = gtData.subarray(offset, end);
+            const canvas = contextCanvases[i];
+            const cctx = canvas.getContext('2d');
+            renderFrame(cctx, canvas, pixels, width, height, channels);
+        }
+    }
+
+    function createContextCanvases() {
+        if (GITHUB_PAGES) return;
+        const container = document.getElementById('contextFrames');
+        container.innerHTML = '';
+        contextCanvases = [];
+
+        for (let i = 0; i < contextFramesCount; i++) {
+            const div = document.createElement('div');
+            div.className = 'context-frame';
+
+            const canvas = document.createElement('canvas');
+            canvas.width = 64;
+            canvas.height = 64;
+            canvas.style.cssText = 'border: 1px solid #4fc3f7; image-rendering: pixelated;';
+
+            const label = document.createElement('span');
+            label.textContent = 't-' + (contextFramesCount - 1 - i);
+
+            div.appendChild(canvas);
+            div.appendChild(label);
+            container.appendChild(div);
+            contextCanvases.push(canvas);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // ONNX inference
+    // -----------------------------------------------------------------------
+    async function decodeLatent(z) {
+        const zTensor = new ort.Tensor('float32', z, [1, latentDim]);
+        const results = await decodeSession.run({ z: zTensor });
+
+        cachedParams = {
+            layer1_w: results.layer1_w,
+            layer1_b: results.layer1_b,
+            layer2_w: results.layer2_w,
+            layer2_b: results.layer2_b,
+        };
+
+        // first_frame is [1, C, H, W] already sigmoided
+        const ff = results.first_frame.data;
+        currentNcaFrame = new Float32Array(ff.length);
+        currentNcaFrame.set(ff);
+    }
+
+    async function stepNca() {
+        // Build grid: image channels from currentNcaFrame, noise in hidden channels
+        const gridSize = gridChannels * height * width;
+        const imgSize = channels * height * width;
+        const grid = new Float32Array(gridSize);
+
+        // Image channels: raw [0,1] values (matching init_grid "image" mode)
+        grid.set(currentNcaFrame);
+        // Hidden channels: Gaussian noise * 0.1 (matching init_grid "image" mode)
+        for (let i = imgSize; i < gridSize; i++) {
+            grid[i] = randn() * 0.1;
+        }
+
+        let gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
+        for (let s = 0; s < numSteps; s++) {
+            const out = await ncaStepSession.run({
+                grid: gridTensor,
+                layer1_w: cachedParams.layer1_w,
+                layer1_b: cachedParams.layer1_b,
+                layer2_w: cachedParams.layer2_w,
+                layer2_b: cachedParams.layer2_b,
+            });
+            gridTensor = out.new_grid;
+        }
+
+        // Sigmoid on first C channels
+        const raw = gridTensor.data;
+        currentNcaFrame = new Float32Array(imgSize);
+        for (let i = 0; i < imgSize; i++) {
+            currentNcaFrame[i] = sigmoid(raw[i]);
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Sequence & latent management
+    // -----------------------------------------------------------------------
+    async function selectSequence(idx) {
+        if (GITHUB_PAGES) return;  // No sequences in GitHub Pages mode
+        isLoading = true;
+        currentSeqIdx = ((idx % numSequences) + numSequences) % numSequences;
+        currentFrameIdx = 0;
+
+        // Load GT binary
+        const padded = String(currentSeqIdx).padStart(3, '0');
+        const resp = await fetch('data/seq_' + padded + '.bin');
+        gtData = new Uint8Array(await resp.arrayBuffer());
+        gtFrameCount = manifest.sequences[currentSeqIdx].frames;
+
+        // Pre-encoded latent
+        currentZ = new Float32Array(manifest.sequences[currentSeqIdx].z);
+        await decodeLatent(currentZ);
+
+        document.getElementById('seqNum').textContent = currentSeqIdx;
+        document.getElementById('latentSource').textContent = 'encoded';
+
+        renderContextFrames();
+        isLoading = false;
+    }
+
+    function resetNca() {
+        // Re-decode from currentZ to reset first frame
+        decodeLatent(currentZ);
+        currentFrameIdx = 0;
+    }
+
+    let lastPressedSlot = -1;  // Track last pressed key for spectrogram display
+
+    async function randomLatent() {
+        currentZ = randnArray(latentDim);
+        await decodeLatent(currentZ);
+        currentFrameIdx = 0;
+        document.getElementById('latentSource').textContent = 'random';
+        lastPressedSlot = -1;
+        document.getElementById('specImg').src = '';
+    }
+
+    const NOTE_ORDER = ['F4', 'Fs4', 'G4', 'Gs4', 'A4', 'As4', 'B4',
+                        'C5', 'Cs5', 'D5', 'Ds5', 'E5', 'F5', 'Fs5',
+                        'G5', 'Gs5', 'A5', 'As5', 'B5'];
+
+    function updateSpectrogramDisplay() {
+        const specImg = document.getElementById('specImg');
+        if (currentMode !== 'latent' || lastPressedSlot < 0) {
+            specImg.src = '';
+            return;
+        }
+        const note = NOTE_ORDER[lastPressedSlot];
+        specImg.src = `spectrograms/${currentInstrument}/${note}.png`;
+    }
+
+    async function applySlotSelection() {
+        // Collect active slots with embeddings
+        const activeSlots = [];
+        const activeIndices = [];
+        for (let i = 0; i < 19; i++) {
+            if (slotActive[i] && slotEmbeddings[i]) {
+                activeSlots.push(slotEmbeddings[i]);
+                activeIndices.push(i);
+            }
+        }
+        if (activeSlots.length === 0) {
+            return;
+        }
+        // Track last pressed for spectrogram display
+        if (activeIndices.length > 0) {
+            lastPressedSlot = activeIndices[activeIndices.length - 1];
+            updateSpectrogramDisplay();
+        }
+        // Average embeddings for chord
+        const mean = new Float32Array(activeSlots[0].length).fill(0);
+        for (const emb of activeSlots) {
+            for (let j = 0; j < emb.length; j++) {
+                mean[j] += emb[j] / activeSlots.length;
+            }
+        }
+        // Apply noise based on number key selection
+        if (noiseLevel > 0) {
+            for (let i = 0; i < mean.length; i++) mean[i] += randn() * noiseLevel;
+        }
+        currentZ = mean;
+        await decodeLatent(currentZ);
+        currentFrameIdx = 0;
+    }
+
+    // -----------------------------------------------------------------------
+    // Instrument embeddings
+    // -----------------------------------------------------------------------
+    function loadInstrumentEmbeddings(instrumentName) {
+        const embeddings = manifest.instrument_embeddings[instrumentName];
+        if (!embeddings) {
+            console.warn('No embeddings for instrument: ' + instrumentName);
+            for (let i = 0; i < 19; i++) slotEmbeddings[i] = null;
+            updateSlotUI();
+            return;
+        }
+        for (let i = 0; i < 19; i++) {
+            const note = NOTE_ORDER[i];
+            slotEmbeddings[i] = embeddings[note] ? new Float32Array(embeddings[note]) : null;
+        }
+        updateSlotUI();
+    }
+
+    function getAvailableInstruments() {
+        if (!manifest.instrument_embeddings) return [];
+        return Object.keys(manifest.instrument_embeddings).sort();
+    }
+
+    // -----------------------------------------------------------------------
+    // Piano keyboard
+    // -----------------------------------------------------------------------
+    const NOTES = [
+        { note: 'F',  tone: 'F4',  key: 'a', type: 'white' },
+        { note: 'F#', tone: 'F#4', key: 'w', type: 'black' },
+        { note: 'G',  tone: 'G4',  key: 's', type: 'white' },
+        { note: 'G#', tone: 'G#4', key: 'e', type: 'black' },
+        { note: 'A',  tone: 'A4',  key: 'd', type: 'white' },
+        { note: 'A#', tone: 'A#4', key: 'r', type: 'black' },
+        { note: 'B',  tone: 'B4',  key: 'f', type: 'white' },
+        { note: 'C',  tone: 'C5',  key: 'g', type: 'white' },
+        { note: 'C#', tone: 'C#5', key: 'y', type: 'black' },
+        { note: 'D',  tone: 'D5',  key: 'h', type: 'white' },
+        { note: 'D#', tone: 'D#5', key: 'u', type: 'black' },
+        { note: 'E',  tone: 'E5',  key: 'j', type: 'white' },
+        { note: 'F',  tone: 'F5',  key: 'k', type: 'white' },
+        { note: 'F#', tone: 'F#5', key: 'o', type: 'black' },
+        { note: 'G',  tone: 'G5',  key: 'l', type: 'white' },
+        { note: 'G#', tone: 'G#5', key: 'p', type: 'black' },
+        { note: 'A',  tone: 'A5',  key: ';', type: 'white' },
+        { note: 'A#', tone: 'A#5', key: '[', type: 'black' },
+        { note: 'B',  tone: 'B5',  key: "'", type: 'white' },
+    ];
+    const keyToSlot = {};
+    NOTES.forEach((n, i) => { keyToSlot[n.key] = i; });
+
+    // -----------------------------------------------------------------------
+    // Instrument samples (Tone.js Sampler)
+    // -----------------------------------------------------------------------
+    const SAMPLE_BASE = 'https://nbrosowsky.github.io/tonejs-instruments/samples/';
+
+    // Sharp-to-filename: F#4 -> Fs4.mp3
+    function noteToFile(n) {
+        return n.replace('#', 's') + '.mp3';
+    }
+
+    // Per-instrument sample note sets (subset — Tone.Sampler pitch-shifts to fill gaps)
+    const INSTRUMENT_SAMPLES = {
+        'piano':            ['A1','A2','A3','A4','A5','A6','C1','C2','C3','C4','C5','C6','D#1','D#2','D#3','D#4','D#5','D#6','F#1','F#2','F#3','F#4','F#5','F#6'],
+        'bass-electric':    ['A#1','A#2','A#3','A#4','C#1','C#2','C#3','C#4','E1','E2','E3','E4','G1','G2','G3','G4'],
+        'bassoon':          ['A2','A3','A4','C3','C4','C5','E4','G2','G3','G4'],
+        'cello':            ['A2','A3','A4','C2','C3','C4','C5','D#2','D#3','D#4','F#3','F#4','G#2','G#3','G#4'],
+        'clarinet':         ['A#3','A#4','A#5','D3','D4','D5','D6','F3','F4','F5','F#6'],
+        'contrabass':       ['A2','A#1','B3','C2','C#3','D2','E2','E3','F#1','F#2','G1','G#2','G#3'],
+        'flute':            ['A4','A5','A6','C4','C5','C6','C7','E4','E5','E6'],
+        'french-horn':      ['A1','A3','C2','C4','D3','D5','D#2','F3','F5','G2'],
+        'guitar-acoustic':  ['A2','A3','A4','C3','C4','C5','D#2','D#3','E2','E3','E4','F#2','F#3','F#4','G#2','G#3','G#4'],
+        'guitar-electric':  ['A2','A3','A4','A5','C3','C4','C5','C6','C#2','D#3','D#4','D#5','E2','F#2','F#3','F#4','F#5'],
+        'guitar-nylon':     ['A2','A3','A4','A5','B1','B2','B3','B4','C#3','C#4','C#5','D2','D3','D5','E2','E3','E4','E5','F#2','F#3','F#4','F#5','G3'],
+        'harmonium':        ['A2','A3','A4','C2','C3','C4','C5','D#2','D#3','D#4','F#2','F#3','G#2','G#3','G#4'],
+        'harp':             ['A2','A4','A6','B1','B3','B5','C3','C5','D2','D4','D6','E1','E3','E5','F2','F4','F6','G1','G3','G5'],
+        'organ':            ['A1','A2','A3','A4','A5','C1','C2','C3','C4','C5','C6','D#1','D#2','D#3','D#4','D#5','F#1','F#2','F#3','F#4','F#5'],
+        'saxophone':        ['A4','A5','A#3','A#4','C4','C5','C#3','D3','D4','D5','D#3','D#4','E3','E4','E5','F3','F4','F5','F#3','F#4','G3','G4','G5','G#3','G#4'],
+        'trombone':         ['A#1','A#2','A#3','C3','C4','C#2','C#4','D3','D4','D#2','D#3','D#4','F2','F3','F4','G#2','G#3'],
+        'trumpet':          ['A3','A5','A#4','C4','C6','D5','D#4','F3','F4','F5','G4'],
+        'tuba':             ['A#1','A#2','A#3','D3','D4','D#2','F1','F2','F3'],
+        'violin':           ['A3','A4','A5','A6','C4','C5','C6','E4','E5','E6','G4','G5','G6'],
+        'xylophone':        ['C5','C6','C7','C8','G4','G5','G6','G7'],
+    };
+
+    const INSTRUMENT_NAMES = Object.keys(INSTRUMENT_SAMPLES).sort();
+
+    let currentSampler = null;
+    let samplerReady = false;
+
+    function loadInstrument(name) {
+        samplerReady = false;
+        const statusEl = document.getElementById('instrumentStatus');
+        statusEl.textContent = 'Loading...';
+
+        if (currentSampler) {
+            currentSampler.dispose();
+            currentSampler = null;
+        }
+
+        const notes = INSTRUMENT_SAMPLES[name];
+        const urls = {};
+        notes.forEach(n => { urls[n] = noteToFile(n); });
+
+        currentSampler = new Tone.Sampler({
+            urls: urls,
+            baseUrl: SAMPLE_BASE + name + '/',
+            onload: () => {
+                samplerReady = true;
+                statusEl.textContent = '';
+            },
+            onerror: () => {
+                statusEl.textContent = 'Failed to load';
+            },
+        }).toDestination();
+    }
+
+    // Instrument dropdown - populated from manifest.instrument_embeddings in init()
+    const instrumentSelect = document.getElementById('instrumentSelect');
+
+    function populateInstrumentDropdown() {
+        instrumentSelect.innerHTML = '';
+        const instruments = getAvailableInstruments();
+        instruments.forEach(name => {
+            const opt = document.createElement('option');
+            opt.value = name;
+            opt.textContent = name;
+            instrumentSelect.appendChild(opt);
+        });
+        // Default to piano if available, otherwise first instrument
+        if (instruments.includes('piano')) {
+            instrumentSelect.value = 'piano';
+            currentInstrument = 'piano';
+        } else if (instruments.length > 0) {
+            instrumentSelect.value = instruments[0];
+            currentInstrument = instruments[0];
+        }
+    }
+
+    instrumentSelect.addEventListener('change', (e) => {
+        currentInstrument = e.target.value;
+        loadInstrumentEmbeddings(currentInstrument);
+        loadInstrument(currentInstrument);
+        updateSpectrogramDisplay();
+    });
+
+    // Audio helpers using Tone.Sampler
+    const activeNotes = {};  // slot index -> tone name
+    function startTone(idx) {
+        if (!samplerReady || activeNotes[idx]) return;
+        const noteName = NOTES[idx].tone;
+        activeNotes[idx] = noteName;
+        Tone.start();
+        currentSampler.triggerAttack(noteName);
+    }
+    function stopTone(idx) {
+        if (!activeNotes[idx]) return;
+        const noteName = activeNotes[idx];
+        delete activeNotes[idx];
+        if (currentSampler) currentSampler.triggerRelease(noteName);
+    }
+    function playTone(idx) {
+        if (!samplerReady) return;
+        Tone.start();
+        currentSampler.triggerAttackRelease(NOTES[idx].tone, 0.15);
+    }
+
+    const pianoKeys = [];
+    const pianoContainer = document.getElementById('pianoKeyboard');
+
+    for (let i = 0; i < NOTES.length; i++) {
+        const key = document.createElement('div');
+        key.className = 'piano-key ' + NOTES[i].type;
+        const keyHint = document.createElement('div');
+        keyHint.className = 'key-hint';
+        keyHint.textContent = NOTES[i].key;
+        key.appendChild(keyHint);
+
+        key.addEventListener('click', () => {
+            playTone(i);
+            if (slotEmbeddings[i]) {
+                slotActive[i] = !slotActive[i];
+                applySlotSelection();
+                updateSlotUI();
+            }
+        });
+
+        pianoContainer.appendChild(key);
+        pianoKeys.push(key);
+    }
+
+    // Keyboard shortcuts
+    // Number keys 1-9,0 set noise level
+    const noiseKeyMap = { '1': 0.1, '2': 0.2, '3': 0.3, '4': 0.4, '5': 0.5, '6': 0.6, '7': 0.7, '8': 0.8, '9': 0.9, '0': 1.0 };
+
+    function updateNoiseMeter() {
+        document.getElementById('noiseMeterFill').style.height = (noiseLevel * 100) + '%';
+        document.getElementById('noiseMeterValue').textContent = noiseLevel > 0 ? noiseLevel.toFixed(1) : '0';
+        document.getElementById('latentSource').textContent =
+            noiseLevel > 0 ? 'perturb: ' + noiseLevel.toFixed(1) : 'encoded';
+    }
+
+    document.addEventListener('keydown', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        if (e.repeat) return;
+
+        // Number keys toggle noise level
+        if (e.key in noiseKeyMap) {
+            const level = noiseKeyMap[e.key];
+            noiseLevel = (noiseLevel === level) ? 0 : level;
+            updateNoiseMeter();
+            return;
+        }
+
+        const idx = keyToSlot[e.key];
+        if (idx !== undefined && slotEmbeddings[idx]) {
+            startTone(idx);
+            slotActive[idx] = true;
+            applySlotSelection();
+            updateSlotUI();
+        }
+    });
+    document.addEventListener('keyup', (e) => {
+        if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
+        const idx = keyToSlot[e.key];
+        if (idx !== undefined) {
+            stopTone(idx);
+            slotActive[idx] = false;
+            // Check if any slots still active
+            const anyActive = slotActive.some(v => v);
+            if (anyActive) applySlotSelection();
+            updateSlotUI();
+        }
+    });
+
+    function updateSlotUI() {
+        for (let i = 0; i < NOTES.length; i++) {
+            const hasFilled = slotEmbeddings[i] !== null;
+            const isSelected = slotActive[i];
+            pianoKeys[i].className = 'piano-key ' + NOTES[i].type
+                + (hasFilled ? ' filled' : '')
+                + (isSelected ? ' selected' : '');
+            pianoKeys[i].title = hasFilled ? NOTE_ORDER[i] : '';
+        }
+        // Update latent source display
+        const activeIndices = slotActive.map((v, i) => v ? i : -1).filter(i => i >= 0);
+        if (activeIndices.length > 1) {
+            document.getElementById('latentSource').textContent =
+                activeIndices.map(i => NOTES[i].note).join('+') + ' (chord)';
+        } else if (activeIndices.length === 1) {
+            document.getElementById('latentSource').textContent = NOTES[activeIndices[0]].note;
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Mode switching
+    // -----------------------------------------------------------------------
+    function setMode(mode) {
+        currentMode = mode;
+        const isSeq = mode === 'sequence';
+        document.getElementById('gtViewer').style.display = isSeq ? '' : 'none';
+        document.getElementById('specViewer').style.display = isSeq ? 'none' : '';
+        document.getElementById('contextSection').style.display = isSeq ? '' : 'none';
+        document.getElementById('seqControls').style.display = isSeq ? '' : 'none';
+        document.getElementById('latentControls').style.display = isSeq ? 'none' : '';
+        document.getElementById('seqInfo').style.display = isSeq ? '' : 'none';
+        document.getElementById('seqModeBtn').classList.toggle('active-mode', isSeq);
+        document.getElementById('latentModeBtn').classList.toggle('active-mode', !isSeq);
+        if (!isSeq) {
+            randomLatent();
+        } else {
+            selectSequence(currentSeqIdx);
+        }
+    }
+
+    if (!GITHUB_PAGES) {
+        document.getElementById('seqModeBtn').addEventListener('click', () => setMode('sequence'));
+        document.getElementById('latentModeBtn').addEventListener('click', () => setMode('latent'));
+    }
+
+    // -----------------------------------------------------------------------
+    // Controls
+    // -----------------------------------------------------------------------
+    document.getElementById('playPauseBtn').addEventListener('click', () => {
+        isPlaying = !isPlaying;
+        document.getElementById('playPauseBtn').textContent = isPlaying ? 'Pause' : 'Play';
+    });
+
+    document.getElementById('stepBtn').addEventListener('click', async () => {
+        await stepNca();
+        currentFrameIdx++;
+        document.getElementById('frameNum').textContent = currentFrameIdx;
+        renderNcaCanvas();
+        if (currentMode === 'sequence') renderGtCanvas();
+    });
+
+    document.getElementById('resetBtn').addEventListener('click', () => {
+        resetNca();
+        currentFrameIdx = 0;
+        document.getElementById('frameNum').textContent = 0;
+    });
+
+    if (!GITHUB_PAGES) {
+        document.getElementById('prevSeqBtn').addEventListener('click', () => {
+            selectSequence(currentSeqIdx - 1);
+        });
+
+        document.getElementById('nextSeqBtn').addEventListener('click', () => {
+            selectSequence(currentSeqIdx + 1);
+        });
+
+        document.getElementById('randomSeqBtn').addEventListener('click', () => {
+            selectSequence(Math.floor(Math.random() * numSequences));
+        });
+    }
+
+    document.getElementById('randomLatentBtn').addEventListener('click', () => {
+        randomLatent();
+    });
+
+    // -----------------------------------------------------------------------
+    // GIF recording (not available in GitHub Pages mode)
+    // -----------------------------------------------------------------------
+    let gifEncoder = null;
+    let isRecording = false;
+    let gifIncludeSpectrogram = false;
+    const gifSize = 256;
+
+    function captureGifFrame() {
+        // No-op in GitHub Pages mode or when not recording
+        if (GITHUB_PAGES || !isRecording || !gifEncoder) return;
+    }
+
+    if (!GITHUB_PAGES) {
+        const recordBtn = document.getElementById('recordBtn');
+        let gifWorkerBlob = null;
+
+        async function ensureGifWorker() {
+            if (gifWorkerBlob) return gifWorkerBlob;
+            const resp = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+            const text = await resp.text();
+            const blob = new Blob([text], { type: 'application/javascript' });
+            gifWorkerBlob = URL.createObjectURL(blob);
+            return gifWorkerBlob;
+        }
+
+        function hasSpectrogram() {
+            const specImg = document.getElementById('specImg');
+            const hasSrc = specImg.src && specImg.src.includes('spectrograms/');
+            return currentMode === 'latent' && lastPressedSlot >= 0 && hasSrc;
+        }
+
+        async function startRecording() {
+            await decodeLatent(currentZ);
+            currentFrameIdx = 0;
+
+            const workerScript = await ensureGifWorker();
+            gifIncludeSpectrogram = hasSpectrogram();
+            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
+            const gifWidth = sideBySide ? gifSize * 2 : gifSize;
+            gifEncoder = new GIF({
+                workers: 2,
+                quality: 10,
+                width: gifWidth,
+                height: gifSize,
+                workerScript: workerScript,
+            });
+            isRecording = true;
+            recordBtn.textContent = 'Stop Recording';
+            recordBtn.style.background = '#f44336';
+        }
+
+        captureGifFrame = function() {
+            if (!isRecording || !gifEncoder) return;
+            const offscreen = document.createElement('canvas');
+            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
+            offscreen.width = sideBySide ? gifSize * 2 : gifSize;
+            offscreen.height = gifSize;
+            const octx = offscreen.getContext('2d');
+
+            if (currentMode === 'sequence') {
+                octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
+                octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
+            } else if (gifIncludeSpectrogram) {
+                const specImg = document.getElementById('specImg');
+                octx.drawImage(specImg, 0, 0, gifSize, gifSize);
+                octx.drawImage(ncaCanvas, gifSize, 0, gifSize, gifSize);
+            } else {
+                octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
+            }
+            gifEncoder.addFrame(octx, { copy: true, delay: 33 });
+        };
+
+        function stopRecording() {
+            if (!gifEncoder) return;
+            isRecording = false;
+            recordBtn.textContent = 'Saving...';
+            recordBtn.disabled = true;
+
+            gifEncoder.on('finished', (blob) => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'nca_recording.gif';
+                a.click();
+                URL.revokeObjectURL(url);
+                recordBtn.textContent = 'Record GIF';
+                recordBtn.style.background = '';
+                recordBtn.disabled = false;
+            });
+            gifEncoder.render();
+            gifEncoder = null;
+        }
+
+        recordBtn.addEventListener('click', async () => {
+            if (isRecording) {
+                stopRecording();
+            } else {
+                await startRecording();
+            }
+        });
+    }
+
+    // -----------------------------------------------------------------------
+    // Simulation loop
+    // -----------------------------------------------------------------------
+    let frameCounter = 0;
+
+    async function simulationLoop() {
+        while (true) {
+            if (isPlaying && !isLoading && cachedParams) {
+                frameCounter += playbackSpeed;
+                while (frameCounter >= 1) {
+                    await stepNca();
+                    currentFrameIdx++;
+                    frameCounter -= 1;
+                }
+            }
+
+            if (!isLoading) {
+                renderNcaCanvas();
+                if (currentMode === 'sequence') renderGtCanvas();
+                document.getElementById('frameNum').textContent = currentFrameIdx;
+                captureGifFrame();
+            }
+
+            await new Promise(r => setTimeout(r, 1000 / 30));
+        }
+    }
+
+    // -----------------------------------------------------------------------
+    // Initialization
+    // -----------------------------------------------------------------------
+    async function init() {
+        const statusEl = document.getElementById('connStatus');
+        statusEl.textContent = 'Loading manifest...';
+
+        try {
+            manifest = await (await fetch('data/manifest.json')).json();
+        } catch (e) {
+            statusEl.textContent = 'Failed to load manifest.json';
+            statusEl.className = 'disconnected';
+            return;
+        }
+
+        // Store config
+        width = manifest.width;
+        height = manifest.height;
+        channels = manifest.channels;
+        contextFramesCount = manifest.context_frames;
+        numSteps = manifest.num_steps;
+        latentDim = manifest.latent_dim;
+        gridChannels = manifest.grid_channels;
+        numSequences = manifest.num_sequences;
+
+        if (!GITHUB_PAGES) {
+            document.getElementById('totalSeq').textContent = numSequences;
+            createContextCanvases();
+        }
+
+        // Load ONNX models
+        statusEl.textContent = 'Loading ONNX models...';
+        try {
+            decodeSession = await ort.InferenceSession.create('onnx/decode_latent.onnx');
+            ncaStepSession = await ort.InferenceSession.create('onnx/nca_step.onnx');
+        } catch (e) {
+            statusEl.textContent = 'Failed to load ONNX models: ' + e.message;
+            statusEl.className = 'disconnected';
+            console.error(e);
+            return;
+        }
+
+        // Initialize instrument embeddings and audio
+        populateInstrumentDropdown();
+        loadInstrumentEmbeddings(currentInstrument);
+        loadInstrument(currentInstrument);
+        updateNoiseMeter();
+
+        // Load first sequence or start with random latent
+        if (GITHUB_PAGES) {
+            statusEl.textContent = 'Initializing...';
+            await randomLatent();
+        } else {
+            statusEl.textContent = 'Loading first sequence...';
+            await selectSequence(0);
+        }
+
+        statusEl.textContent = 'Ready';
+        statusEl.className = 'connected';
+
+        simulationLoop();
+    }
+
+    init();
+    })();
+    </script>
+</body>
+</html>

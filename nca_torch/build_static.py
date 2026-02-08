@@ -452,17 +452,90 @@ def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, 
     print(f"Wrote manifest.json ({manifest_path.stat().st_size / 1024:.0f} KB)")
 
 
-def generate_html(cfg, output_dir: Path, article_html: str = ""):
+def export_data_github_pages(instrument_embeddings, cfg, output_dir: Path):
+    """Write minimal manifest.json for GitHub Pages (no sequences)."""
+    data_dir = output_dir / "data"
+    data_dir.mkdir(parents=True, exist_ok=True)
+
+    H, W = cfg["grid_size"]
+    C = cfg["in_channels"]
+
+    manifest = {
+        "num_sequences": 0,
+        "width": W,
+        "height": H,
+        "channels": C,
+        "context_frames": cfg["context_frames"],
+        "num_steps": cfg["num_steps"],
+        "latent_dim": cfg["latent_dim"],
+        "grid_channels": cfg["grid_channels"],
+        "sequences": [],
+        "instrument_embeddings": instrument_embeddings,
+    }
+
+    manifest_path = data_dir / "manifest.json"
+    with open(manifest_path, "w") as f:
+        json.dump(manifest, f)
+    print(f"Wrote manifest.json ({manifest_path.stat().st_size / 1024:.0f} KB)")
+
+
+def generate_html(cfg, output_dir: Path, article_html: str = "", github_pages: bool = False):
     """Generate index.html with inline CSS/JS using onnxruntime-web."""
-    html = _build_html(cfg, article_html)
+    html = _build_html(cfg, article_html, github_pages)
     html_path = output_dir / "index.html"
     with open(html_path, "w") as f:
         f.write(html)
     print(f"Wrote index.html ({html_path.stat().st_size / 1024:.0f} KB)")
 
 
-def _build_html(cfg, article_html: str = ""):
+def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     """Construct the full HTML string."""
+
+    # Conditionally include sequence mode UI
+    mode_buttons = "" if github_pages else """
+                <div class="control-row">
+                    <button id="seqModeBtn" class="active-mode">Sequence</button>
+                    <button id="latentModeBtn">Free Latent</button>
+                </div>
+"""
+
+    seq_controls = "" if github_pages else """
+                <div class="control-row" id="seqControls">
+                    <button id="prevSeqBtn">&lt; Prev</button>
+                    <button id="randomSeqBtn">Random Sequence</button>
+                    <button id="nextSeqBtn">Next &gt;</button>
+                </div>
+"""
+
+    latent_controls = """
+                <div class="control-row">
+                    <button id="randomLatentBtn">Random Latent</button>
+                </div>
+""" if github_pages else """
+                <div id="latentControls" style="display:none">
+                    <div class="control-row">
+                        <button id="randomLatentBtn">Random Latent</button>
+                    </div>
+                </div>
+"""
+
+    record_button = "" if github_pages else '<button id="recordBtn">Record GIF</button>'
+
+    seq_info = "" if github_pages else '<div id="seqInfo">Sequence: <span id="seqNum">0</span> / <span id="totalSeq">0</span></div>'
+
+    gt_viewer = "" if github_pages else """
+            <div class="viewer" id="gtViewer">
+                <div class="viewer-label">Ground Truth</div>
+                <canvas id="gtCanvas" width="256" height="256"></canvas>
+            </div>"""
+
+    context_section = "" if github_pages else """
+        <div class="context-section" id="contextSection">
+            <h3>Context Frames (Input to Encoder)</h3>
+            <div class="context-frames" id="contextFrames"></div>
+        </div>
+"""
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -725,12 +798,8 @@ def _build_html(cfg, article_html: str = ""):
         <h1>Neuromusical Cellular Automata</h1>
         <p class="subtitle">Play the piano to explore the space of Neural Cellular Automata. Each note samples a latent space which then generates an NCA on the fly!</p>
 
-        <div class="viewers">
-            <div class="viewer" id="gtViewer">
-                <div class="viewer-label">Ground Truth</div>
-                <canvas id="gtCanvas" width="256" height="256"></canvas>
-            </div>
-            <div class="viewer" id="specViewer" style="display: none;">
+        <div class="viewers">{gt_viewer}
+            <div class="viewer" id="specViewer" style="display: {'block' if github_pages else 'none'};">
                 <div class="viewer-label">Spectrogram</div>
                 <img id="specImg" width="256" height="256" style="border: 2px solid #4fc3f7; background: #000; image-rendering: pixelated;" />
             </div>
@@ -739,37 +808,17 @@ def _build_html(cfg, article_html: str = ""):
                 <canvas id="ncaCanvas" width="256" height="256"></canvas>
             </div>
         </div>
-
-        <div class="context-section" id="contextSection">
-            <h3>Context Frames (Input to Encoder)</h3>
-            <div class="context-frames" id="contextFrames"></div>
-        </div>
-
+{context_section}
         <div class="controls-container" style="display: flex; justify-content: center;">
             <div class="controls">
-                <div class="control-row">
-                    <button id="seqModeBtn" class="active-mode">Sequence</button>
-                    <button id="latentModeBtn">Free Latent</button>
-                </div>
-
+{mode_buttons}
                 <div class="control-row">
                     <button id="playPauseBtn">Pause</button>
                     <button id="stepBtn">Step</button>
                     <button id="resetBtn">Reset</button>
-                    <button id="recordBtn">Record GIF</button>
+                    {record_button}
                 </div>
-
-                <div class="control-row" id="seqControls">
-                    <button id="prevSeqBtn">&lt; Prev</button>
-                    <button id="randomSeqBtn">Random Sequence</button>
-                    <button id="nextSeqBtn">Next &gt;</button>
-                </div>
-
-                <div id="latentControls" style="display:none">
-                    <div class="control-row">
-                        <button id="randomLatentBtn">Random Latent</button>
-                    </div>
-                </div>
+{seq_controls}{latent_controls}
 
                 <div class="control-row" style="margin-top: 10px;">
                     <div style="display: flex; flex-direction: column; align-items: center; margin-right: 15px;">
@@ -787,7 +836,7 @@ def _build_html(cfg, article_html: str = ""):
                 </div>
 
                 <div class="info">
-                    <div id="seqInfo">Sequence: <span id="seqNum">0</span> / <span id="totalSeq">0</span></div>
+                    {seq_info}
                     <div>Frame: <span id="frameNum">0</span></div>
                     <div>Latent: <span id="latentSource">encoded</span></div>
                 </div>
@@ -806,7 +855,7 @@ def _build_html(cfg, article_html: str = ""):
 
     <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/tone@14/build/Tone.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>
+    {'<script src="https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.js"></script>' if not github_pages else ''}
     <script>
     (function() {{
     "use strict";
@@ -814,6 +863,7 @@ def _build_html(cfg, article_html: str = ""):
     // -----------------------------------------------------------------------
     // Config (filled from manifest at runtime)
     // -----------------------------------------------------------------------
+    const GITHUB_PAGES = {'true' if github_pages else 'false'};
     let width = 0, height = 0, channels = 0;
     let contextFramesCount = 0, numSteps = 0;
     let latentDim = 0, gridChannels = 0;
@@ -827,7 +877,7 @@ def _build_html(cfg, article_html: str = ""):
     let currentSeqIdx = 0, currentFrameIdx = 0;
     let isPlaying = true;
     let playbackSpeed = 1.0;
-    let currentMode = 'sequence';
+    let currentMode = GITHUB_PAGES ? 'latent' : 'sequence';
     let isLoading = false;  // true while selectSequence/decodeLatent in progress
     let noiseLevel = 1.0;   // default to max; keys 1-9 map to 0.1-0.9, key 0 = 1.0
 
@@ -846,9 +896,9 @@ def _build_html(cfg, article_html: str = ""):
     let currentInstrument = 'piano';
 
     // Canvas refs
-    const gtCanvas = document.getElementById('gtCanvas');
+    const gtCanvas = GITHUB_PAGES ? null : document.getElementById('gtCanvas');
     const ncaCanvas = document.getElementById('ncaCanvas');
-    const gtCtx = gtCanvas.getContext('2d');
+    const gtCtx = gtCanvas ? gtCanvas.getContext('2d') : null;
     const ncaCtx = ncaCanvas.getContext('2d');
     let contextCanvases = [];
 
@@ -919,7 +969,7 @@ def _build_html(cfg, article_html: str = ""):
     }}
 
     function renderGtCanvas() {{
-        if (!gtData) return;
+        if (GITHUB_PAGES || !gtData || !gtCtx) return;
         const offset = (contextFramesCount + currentFrameIdx) * height * width * channels;
         const end = offset + height * width * channels;
         if (end > gtData.length) {{
@@ -933,7 +983,7 @@ def _build_html(cfg, article_html: str = ""):
     }}
 
     function renderContextFrames() {{
-        if (!gtData) return;
+        if (GITHUB_PAGES || !gtData) return;
         for (let i = 0; i < contextFramesCount && i < contextCanvases.length; i++) {{
             const offset = i * height * width * channels;
             const end = offset + height * width * channels;
@@ -946,6 +996,7 @@ def _build_html(cfg, article_html: str = ""):
     }}
 
     function createContextCanvases() {{
+        if (GITHUB_PAGES) return;
         const container = document.getElementById('contextFrames');
         container.innerHTML = '';
         contextCanvases = [];
@@ -1026,6 +1077,7 @@ def _build_html(cfg, article_html: str = ""):
     // Sequence & latent management
     // -----------------------------------------------------------------------
     async function selectSequence(idx) {{
+        if (GITHUB_PAGES) return;  // No sequences in GitHub Pages mode
         isLoading = true;
         currentSeqIdx = ((idx % numSequences) + numSequences) % numSequences;
         currentFrameIdx = 0;
@@ -1386,8 +1438,10 @@ def _build_html(cfg, article_html: str = ""):
         }}
     }}
 
-    document.getElementById('seqModeBtn').addEventListener('click', () => setMode('sequence'));
-    document.getElementById('latentModeBtn').addEventListener('click', () => setMode('latent'));
+    if (!GITHUB_PAGES) {{
+        document.getElementById('seqModeBtn').addEventListener('click', () => setMode('sequence'));
+        document.getElementById('latentModeBtn').addEventListener('click', () => setMode('latent'));
+    }}
 
     // -----------------------------------------------------------------------
     // Controls
@@ -1411,120 +1465,126 @@ def _build_html(cfg, article_html: str = ""):
         document.getElementById('frameNum').textContent = 0;
     }});
 
-    document.getElementById('prevSeqBtn').addEventListener('click', () => {{
-        selectSequence(currentSeqIdx - 1);
-    }});
+    if (!GITHUB_PAGES) {{
+        document.getElementById('prevSeqBtn').addEventListener('click', () => {{
+            selectSequence(currentSeqIdx - 1);
+        }});
 
-    document.getElementById('nextSeqBtn').addEventListener('click', () => {{
-        selectSequence(currentSeqIdx + 1);
-    }});
+        document.getElementById('nextSeqBtn').addEventListener('click', () => {{
+            selectSequence(currentSeqIdx + 1);
+        }});
 
-    document.getElementById('randomSeqBtn').addEventListener('click', () => {{
-        selectSequence(Math.floor(Math.random() * numSequences));
-    }});
+        document.getElementById('randomSeqBtn').addEventListener('click', () => {{
+            selectSequence(Math.floor(Math.random() * numSequences));
+        }});
+    }}
 
     document.getElementById('randomLatentBtn').addEventListener('click', () => {{
         randomLatent();
     }});
 
     // -----------------------------------------------------------------------
-    // GIF recording
+    // GIF recording (not available in GitHub Pages mode)
     // -----------------------------------------------------------------------
     let gifEncoder = null;
     let isRecording = false;
-    let gifIncludeSpectrogram = false;  // whether current recording includes spectrogram
-    const gifSize = 256;  // match canvas display size
-    const recordBtn = document.getElementById('recordBtn');
-    let gifWorkerBlob = null;  // cached blob URL for gif.js worker
-
-    async function ensureGifWorker() {{
-        if (gifWorkerBlob) return gifWorkerBlob;
-        const resp = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
-        const text = await resp.text();
-        const blob = new Blob([text], {{ type: 'application/javascript' }});
-        gifWorkerBlob = URL.createObjectURL(blob);
-        return gifWorkerBlob;
-    }}
-
-    function hasSpectrogram() {{
-        const specImg = document.getElementById('specImg');
-        const hasSrc = specImg.src && specImg.src.includes('spectrograms/');
-        return currentMode === 'latent' && lastPressedSlot >= 0 && hasSrc;
-    }}
-
-    async function startRecording() {{
-        // Reset simulation so recording starts from the first frame
-        await decodeLatent(currentZ);
-        currentFrameIdx = 0;
-
-        const workerScript = await ensureGifWorker();
-        gifIncludeSpectrogram = hasSpectrogram();
-        const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
-        const gifWidth = sideBySide ? gifSize * 2 : gifSize;
-        gifEncoder = new GIF({{
-            workers: 2,
-            quality: 10,
-            width: gifWidth,
-            height: gifSize,
-            workerScript: workerScript,
-        }});
-        isRecording = true;
-        recordBtn.textContent = 'Stop Recording';
-        recordBtn.style.background = '#f44336';
-    }}
+    let gifIncludeSpectrogram = false;
+    const gifSize = 256;
 
     function captureGifFrame() {{
-        if (!isRecording || !gifEncoder) return;
-        // Offscreen canvas for compositing
-        const offscreen = document.createElement('canvas');
-        const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
-        offscreen.width = sideBySide ? gifSize * 2 : gifSize;
-        offscreen.height = gifSize;
-        const octx = offscreen.getContext('2d');
+        // No-op in GitHub Pages mode or when not recording
+        if (GITHUB_PAGES || !isRecording || !gifEncoder) return;
+    }}
 
-        if (currentMode === 'sequence') {{
-            // NCA on left, GT on right
-            octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
-            octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
-        }} else if (gifIncludeSpectrogram) {{
-            // Spectrogram on left, NCA on right
+    if (!GITHUB_PAGES) {{
+        const recordBtn = document.getElementById('recordBtn');
+        let gifWorkerBlob = null;
+
+        async function ensureGifWorker() {{
+            if (gifWorkerBlob) return gifWorkerBlob;
+            const resp = await fetch('https://cdn.jsdelivr.net/npm/gif.js@0.2.0/dist/gif.worker.js');
+            const text = await resp.text();
+            const blob = new Blob([text], {{ type: 'application/javascript' }});
+            gifWorkerBlob = URL.createObjectURL(blob);
+            return gifWorkerBlob;
+        }}
+
+        function hasSpectrogram() {{
             const specImg = document.getElementById('specImg');
-            octx.drawImage(specImg, 0, 0, gifSize, gifSize);
-            octx.drawImage(ncaCanvas, gifSize, 0, gifSize, gifSize);
-        }} else {{
-            octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
+            const hasSrc = specImg.src && specImg.src.includes('spectrograms/');
+            return currentMode === 'latent' && lastPressedSlot >= 0 && hasSrc;
         }}
-        gifEncoder.addFrame(octx, {{ copy: true, delay: 33 }});
-    }}
 
-    function stopRecording() {{
-        if (!gifEncoder) return;
-        isRecording = false;
-        recordBtn.textContent = 'Saving...';
-        recordBtn.disabled = true;
+        async function startRecording() {{
+            await decodeLatent(currentZ);
+            currentFrameIdx = 0;
 
-        gifEncoder.on('finished', (blob) => {{
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = 'nca_recording.gif';
-            a.click();
-            URL.revokeObjectURL(url);
-            recordBtn.textContent = 'Record GIF';
-            recordBtn.style.background = '';
-            recordBtn.disabled = false;
+            const workerScript = await ensureGifWorker();
+            gifIncludeSpectrogram = hasSpectrogram();
+            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
+            const gifWidth = sideBySide ? gifSize * 2 : gifSize;
+            gifEncoder = new GIF({{
+                workers: 2,
+                quality: 10,
+                width: gifWidth,
+                height: gifSize,
+                workerScript: workerScript,
+            }});
+            isRecording = true;
+            recordBtn.textContent = 'Stop Recording';
+            recordBtn.style.background = '#f44336';
+        }}
+
+        captureGifFrame = function() {{
+            if (!isRecording || !gifEncoder) return;
+            const offscreen = document.createElement('canvas');
+            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
+            offscreen.width = sideBySide ? gifSize * 2 : gifSize;
+            offscreen.height = gifSize;
+            const octx = offscreen.getContext('2d');
+
+            if (currentMode === 'sequence') {{
+                octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
+                octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
+            }} else if (gifIncludeSpectrogram) {{
+                const specImg = document.getElementById('specImg');
+                octx.drawImage(specImg, 0, 0, gifSize, gifSize);
+                octx.drawImage(ncaCanvas, gifSize, 0, gifSize, gifSize);
+            }} else {{
+                octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
+            }}
+            gifEncoder.addFrame(octx, {{ copy: true, delay: 33 }});
+        }};
+
+        function stopRecording() {{
+            if (!gifEncoder) return;
+            isRecording = false;
+            recordBtn.textContent = 'Saving...';
+            recordBtn.disabled = true;
+
+            gifEncoder.on('finished', (blob) => {{
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = 'nca_recording.gif';
+                a.click();
+                URL.revokeObjectURL(url);
+                recordBtn.textContent = 'Record GIF';
+                recordBtn.style.background = '';
+                recordBtn.disabled = false;
+            }});
+            gifEncoder.render();
+            gifEncoder = null;
+        }}
+
+        recordBtn.addEventListener('click', async () => {{
+            if (isRecording) {{
+                stopRecording();
+            }} else {{
+                await startRecording();
+            }}
         }});
-        gifEncoder.render();
-        gifEncoder = null;
     }}
-
-    recordBtn.addEventListener('click', async () => {{
-        if (isRecording) {{
-            stopRecording();
-        }} else {{
-            await startRecording();
-        }}
-    }});
 
     // -----------------------------------------------------------------------
     // Simulation loop
@@ -1578,8 +1638,10 @@ def _build_html(cfg, article_html: str = ""):
         gridChannels = manifest.grid_channels;
         numSequences = manifest.num_sequences;
 
-        document.getElementById('totalSeq').textContent = numSequences;
-        createContextCanvases();
+        if (!GITHUB_PAGES) {{
+            document.getElementById('totalSeq').textContent = numSequences;
+            createContextCanvases();
+        }}
 
         // Load ONNX models
         statusEl.textContent = 'Loading ONNX models...';
@@ -1599,9 +1661,14 @@ def _build_html(cfg, article_html: str = ""):
         loadInstrument(currentInstrument);
         updateNoiseMeter();
 
-        // Load first sequence
-        statusEl.textContent = 'Loading first sequence...';
-        await selectSequence(0);
+        // Load first sequence or start with random latent
+        if (GITHUB_PAGES) {{
+            statusEl.textContent = 'Initializing...';
+            await randomLatent();
+        }} else {{
+            statusEl.textContent = 'Loading first sequence...';
+            await selectSequence(0);
+        }}
 
         statusEl.textContent = 'Ready';
         statusEl.className = 'connected';
@@ -1637,22 +1704,38 @@ def main():
         "--readme", type=str, default=None,
         help="Path to README.md for article content (default: auto-detect from repo root)"
     )
+    parser.add_argument(
+        "--github-pages", action="store_true",
+        help="Build for GitHub Pages: free latent mode only, no GIF recording, outputs to repo root"
+    )
     args = parser.parse_args()
 
-    output_dir = Path(args.output)
+    # For GitHub Pages, default output to repo root
+    if args.github_pages and args.output == "./static_build":
+        output_dir = Path(__file__).parent.parent  # repo root
+    else:
+        output_dir = Path(args.output)
     output_dir.mkdir(parents=True, exist_ok=True)
     data_path = Path(args.data)
     # Handle both file path (*.npy) and directory
     data_dir = data_path.parent if data_path.is_file() else data_path
 
     print("=" * 60)
-    print("Static Build: NCA Dynamics Web App")
+    if args.github_pages:
+        print("Static Build: NCA GitHub Pages (Free Latent Mode Only)")
+    else:
+        print("Static Build: NCA Dynamics Web App")
     print("=" * 60)
 
-    # 1a. Load model + data
-    print("\n[1/8] Loading model and data...")
+    # 1a. Load model (and data if not github-pages mode)
+    print("\n[1/8] Loading model...")
     model, cfg, device = load_model(args.checkpoint, args.device)
-    dataset = load_data(args.data, cfg["context_frames"])
+
+    dataset = None
+    latents = []
+    if not args.github_pages:
+        print("  Loading sequence data...")
+        dataset = load_data(args.data, cfg["context_frames"])
 
     # 1b. Load instrument embeddings from pre-generated spectrograms
     spectrograms_dir = data_dir / "spectrograms"
@@ -1667,18 +1750,25 @@ def main():
         print(f"\n[2/8] No spectrograms found at {spectrograms_dir}")
         print("  Run generate_audio_visual.py to create spectrograms")
 
-    # 1c. Pre-encode all sequences
-    print("\n[3/8] Encoding sequences...")
-    latents = encode_sequences(model, dataset, cfg, device, args.max_sequences)
+    # 1c. Pre-encode all sequences (skip for github-pages)
+    if args.github_pages:
+        print("\n[3/8] Skipping sequence encoding (GitHub Pages mode)")
+    else:
+        print("\n[3/8] Encoding sequences...")
+        latents = encode_sequences(model, dataset, cfg, device, args.max_sequences)
 
     # 1d. Export ONNX models
     print("\n[4/8] Exporting ONNX models...")
     export_onnx_models(model, cfg, device, output_dir)
 
     # 1e. Export data
-    n = len(latents)
-    print(f"\n[5/8] Exporting data ({n} sequences)...")
-    export_data(dataset, latents, instrument_embeddings, cfg, output_dir, args.max_sequences)
+    if args.github_pages:
+        print("\n[5/8] Exporting manifest (GitHub Pages mode, no sequences)...")
+        export_data_github_pages(instrument_embeddings, cfg, output_dir)
+    else:
+        n = len(latents)
+        print(f"\n[5/8] Exporting data ({n} sequences)...")
+        export_data(dataset, latents, instrument_embeddings, cfg, output_dir, args.max_sequences)
 
     # 1f. Copy static assets (groundtruth GIFs, etc.)
     print("\n[6/8] Copying static assets...")
@@ -1714,11 +1804,14 @@ def main():
 
     # 1h. Generate HTML
     print("\n[8/8] Generating index.html...")
-    generate_html(cfg, output_dir, article_html)
+    generate_html(cfg, output_dir, article_html, github_pages=args.github_pages)
 
     print("\n" + "=" * 60)
     print(f"Build complete! Output in: {output_dir}")
-    print(f"  To serve: cd {output_dir} && python -m http.server 8080")
+    if args.github_pages:
+        print("  GitHub Pages mode: deploy repo to GitHub and enable Pages")
+    else:
+        print(f"  To serve: cd {output_dir} && python -m http.server 8080")
     print("=" * 60)
 
 
