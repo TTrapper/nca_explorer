@@ -36,6 +36,8 @@ def get_args():
     # Data
     parser.add_argument("--data", type=str, required=True,
                         help="Path to sequence data (.npy file or directory)")
+    parser.add_argument("--max-samples", type=int, default=None,
+                        help="Limit number of training samples (for quick experiments)")
     parser.add_argument("--val-split", type=float, default=0.1,
                         help="Fraction of data for validation")
 
@@ -112,11 +114,18 @@ class DynamicsTrainer:
             future_frames=args.ss_steps,  # Get multiple future frames
         )
 
+        # Limit samples if requested
+        base_dataset = full_dataset  # Keep reference for attributes
+        if args.max_samples and args.max_samples < len(full_dataset):
+            indices = list(range(args.max_samples))
+            full_dataset = torch.utils.data.Subset(full_dataset, indices)
+            print(f"Limited to {args.max_samples} samples")
+
         # Infer dimensions from data
-        self.in_channels = full_dataset.channels
-        self.grid_size = (full_dataset.height, full_dataset.width)
-        print(f"Data: {full_dataset.channels} channels, {self.grid_size} resolution")
-        print(f"Context frames: {args.context_frames} (encoder input: {full_dataset.channels * args.context_frames} channels)")
+        self.in_channels = base_dataset.channels
+        self.grid_size = (base_dataset.height, base_dataset.width)
+        print(f"Data: {base_dataset.channels} channels, {self.grid_size} resolution")
+        print(f"Context frames: {args.context_frames} (encoder input: {base_dataset.channels * args.context_frames} channels)")
         print(f"Scheduled sampling steps: {args.ss_steps}")
 
         # Split train/val
@@ -330,7 +339,7 @@ class DynamicsTrainer:
             # Encode once from ground truth context (matches training)
             z, mu, logvar = self.model.encode(context_stacked)
 
-            # First step uses FirstFrameDecoder (matches training step 0)
+            # First step uses FirstFrameDecoder
             pred = self.model.decode_first_frame(z)
 
             # Loss against first future frame
@@ -451,12 +460,12 @@ class DynamicsTrainer:
         # Encode ONCE from initial context
         z, _, _ = self.model.encode(context_stacked)
 
+        # Generate NCA parameters for dynamics
+        layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
+
         # First frame from FirstFrameDecoder
         first_frame = self.model.decode_first_frame(z)
         frames = [first_frame.clone()]
-
-        # Generate NCA parameters for dynamics
-        layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
 
         # Run NCA for subsequent frames (dynamics)
         current_frame = first_frame
