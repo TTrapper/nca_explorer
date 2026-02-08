@@ -7,8 +7,8 @@ The demo above generates a unique Neural Cellular Automaton for each sound you p
 - **Piano keys**: Click or use keyboard (A-L for white keys, W/E/R/Y/U/O/P for black keys). Each note loads a different latent vector that generates a unique NCA.
 - **Chords**: Hold multiple keys to blend their latents together, creating hybrid dynamics.
 - **Instruments**: Use the dropdown to switch between piano, violin, guitar, and more. Each instrument produces distinct visual behaviors.
-- **Perturbation**: Press number keys 1-9 (or 0 for max) to add noise to the latent space. Higher values create more chaotic, unpredictable patterns.
-- **Free Latent mode**: Click "Free Latent" then "Random Latent" to explore completely random points in the learned space.
+- **Perturbation**: Defaults to max. Press number keys 1-9 to reduce, or 0 for max. Higher values create more chaotic, unpredictable patterns. Press the same key twice to toggle off.
+- **Random Latent**: Click "Random Latent" to explore completely random points in the learned space.
 
 ---
 
