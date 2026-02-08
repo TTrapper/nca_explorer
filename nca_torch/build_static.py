@@ -1432,6 +1432,7 @@ def _build_html(cfg, article_html: str = ""):
     // -----------------------------------------------------------------------
     let gifEncoder = null;
     let isRecording = false;
+    let gifIncludeSpectrogram = false;  // whether current recording includes spectrogram
     const gifSize = 256;  // match canvas display size
     const recordBtn = document.getElementById('recordBtn');
     let gifWorkerBlob = null;  // cached blob URL for gif.js worker
@@ -1447,7 +1448,8 @@ def _build_html(cfg, article_html: str = ""):
 
     function hasSpectrogram() {{
         const specImg = document.getElementById('specImg');
-        return currentMode === 'latent' && lastPressedSlot >= 0 && specImg.src && specImg.complete;
+        const hasSrc = specImg.src && specImg.src.includes('spectrograms/');
+        return currentMode === 'latent' && lastPressedSlot >= 0 && hasSrc;
     }}
 
     async function startRecording() {{
@@ -1456,7 +1458,8 @@ def _build_html(cfg, article_html: str = ""):
         currentFrameIdx = 0;
 
         const workerScript = await ensureGifWorker();
-        const sideBySide = currentMode === 'sequence' || hasSpectrogram();
+        gifIncludeSpectrogram = hasSpectrogram();
+        const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
         const gifWidth = sideBySide ? gifSize * 2 : gifSize;
         gifEncoder = new GIF({{
             workers: 2,
@@ -1474,8 +1477,7 @@ def _build_html(cfg, article_html: str = ""):
         if (!isRecording || !gifEncoder) return;
         // Offscreen canvas for compositing
         const offscreen = document.createElement('canvas');
-        const showSpec = hasSpectrogram();
-        const sideBySide = currentMode === 'sequence' || showSpec;
+        const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
         offscreen.width = sideBySide ? gifSize * 2 : gifSize;
         offscreen.height = gifSize;
         const octx = offscreen.getContext('2d');
@@ -1484,7 +1486,7 @@ def _build_html(cfg, article_html: str = ""):
             // NCA on left, GT on right
             octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
             octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
-        }} else if (showSpec) {{
+        }} else if (gifIncludeSpectrogram) {{
             // Spectrogram on left, NCA on right
             const specImg = document.getElementById('specImg');
             octx.drawImage(specImg, 0, 0, gifSize, gifSize);
