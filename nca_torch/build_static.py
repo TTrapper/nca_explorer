@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import re
 import shutil
 import struct
 import sys
@@ -30,6 +31,98 @@ import torch.nn.functional as F
 
 from autoencoder import NCAAutoencoder
 from datasets import SequenceDataset
+
+
+# ---------------------------------------------------------------------------
+# Markdown to HTML converter (simple)
+# ---------------------------------------------------------------------------
+
+def markdown_to_html(md_text: str) -> str:
+    """Convert basic markdown to HTML for the article section."""
+    lines = md_text.split('\n')
+    html_lines = []
+    in_list = False
+
+    for line in lines:
+        stripped = line.strip()
+
+        # Skip empty lines but close lists
+        if not stripped:
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            html_lines.append('')
+            continue
+
+        # Horizontal rule
+        if stripped == '---':
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            html_lines.append('<hr>')
+            continue
+
+        # Headers
+        if stripped.startswith('## '):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            text = stripped[3:]
+            html_lines.append(f'<h2>{text}</h2>')
+            continue
+        if stripped.startswith('# '):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            # Skip the main title (we have it in the page header)
+            continue
+
+        # List items
+        if stripped.startswith('- '):
+            if not in_list:
+                html_lines.append('<ul>')
+                in_list = True
+            text = process_inline_markdown(stripped[2:])
+            html_lines.append(f'<li>{text}</li>')
+            continue
+
+        # Images - supports ![alt|WxH](path) or ![alt|W](path) for square
+        img_match = re.match(r'!\[([^\]|]*)\|?(\d+)?x?(\d+)?\]\(([^)]+)\)', stripped)
+        if img_match:
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            alt, w, h, src = img_match.groups()
+            style = ""
+            if w:
+                width = int(w)
+                height = int(h) if h else width  # Square if only width given
+                style = f' style="width: {width}px; height: {height}px;"'
+            html_lines.append(f'<div class="article-img"><img src="{src}" alt="{alt}"{style} /></div>')
+            continue
+
+        # Regular paragraph
+        if in_list:
+            html_lines.append('</ul>')
+            in_list = False
+        text = process_inline_markdown(stripped)
+        html_lines.append(f'<p>{text}</p>')
+
+    if in_list:
+        html_lines.append('</ul>')
+
+    return '\n            '.join(html_lines)
+
+
+def process_inline_markdown(text: str) -> str:
+    """Process inline markdown (bold, italic, code)."""
+    # Bold **text**
+    text = re.sub(r'\*\*([^*]+)\*\*', r'<strong>\1</strong>', text)
+    # Italic *text*
+    text = re.sub(r'\*([^*]+)\*', r'<em>\1</em>', text)
+    # Code `text`
+    text = re.sub(r'`([^`]+)`', r'<code>\1</code>', text)
+    return text
 
 
 # ---------------------------------------------------------------------------
@@ -359,23 +452,23 @@ def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, 
     print(f"Wrote manifest.json ({manifest_path.stat().st_size / 1024:.0f} KB)")
 
 
-def generate_html(cfg, output_dir: Path):
+def generate_html(cfg, output_dir: Path, article_html: str = ""):
     """Generate index.html with inline CSS/JS using onnxruntime-web."""
-    html = _build_html(cfg)
+    html = _build_html(cfg, article_html)
     html_path = output_dir / "index.html"
     with open(html_path, "w") as f:
         f.write(html)
     print(f"Wrote index.html ({html_path.stat().st_size / 1024:.0f} KB)")
 
 
-def _build_html(cfg):
+def _build_html(cfg, article_html: str = ""):
     """Construct the full HTML string."""
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Neural CA Generator</title>
+    <title>Neuromusical Cellular Automata</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -590,11 +683,46 @@ def _build_html(cfg):
             border-top: 1px solid #333;
             margin: 48px 0;
         }}
+        .article ul {{
+            color: #ccc;
+            margin-bottom: 16px;
+            padding-left: 24px;
+        }}
+        .article li {{
+            margin-bottom: 8px;
+        }}
+        .article-img {{
+            display: flex;
+            justify-content: center;
+            flex-wrap: wrap;
+            gap: 16px;
+            margin: 24px 0;
+        }}
+        .article-img img {{
+            max-width: 400px;
+            height: auto;
+            image-rendering: pixelated;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }}
+        .article code {{
+            background: #2a2a4e;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: monospace;
+        }}
+        .article strong {{
+            color: #4fc3f7;
+        }}
+        .article em {{
+            color: #aaa;
+            font-style: italic;
+        }}
     </style>
 </head>
 <body>
     <div class="main-container">
-        <h1>Neural CA Generator</h1>
+        <h1>Neuromusical Cellular Automata</h1>
         <p class="subtitle">Play the piano to explore the space of Neural Cellular Automata. Each note samples a latent space which then generates an NCA on the fly!</p>
 
         <div class="viewers">
@@ -676,36 +804,7 @@ def _build_html(cfg):
 
         <div class="article">
             <hr>
-
-            <h2>Neural Cellular Automata</h2>
-            <p>Cellular automata are systems of simple cells on a grid, each updating its state based on its neighbors. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules. Neural Cellular Automata (NCA) replace the hand-designed update rules with a small neural network, allowing the system to learn its own dynamics from data.</p>
-            <div style="display: flex; justify-content: center; margin: 24px 0;">
-                <img src="assets/rainbow_gliders.gif" style="width: 512px; height: 512px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
-            </div>
-            <p>In an NCA, each cell looks at its immediate neighborhood and passes that information through a two-layer convolutional network to produce an update. The same weights are shared across every cell and every timestep, making the system translation-invariant and inherently parallelizable. Despite having only a few thousand parameters, NCAs can learn to grow, regenerate, and sustain surprisingly complex patterns.</p>
-
-            <h2>Dynamic Data</h2>
-            <p>Rather than learning to produce a single static image, the NCA here is trained on sequences of frames from dynamic simulations. Given a few context frames as input, the model learns to predict how the system evolves over time. Each training sequence captures a different behavior, forcing the model to internalize the underlying rules of motion rather than memorizing individual frames.</p>
-            <div style="display: flex; justify-content: center; gap: 24px; margin: 24px 0; flex-wrap: wrap;">
-                <div style="text-align: center;">
-                    <img src="assets/groundtruth-1.gif" style="width: 400px; height: 200px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
-                </div>
-                <div style="text-align: center;">
-                    <img src="assets/groundtruth-2.gif" style="width: 400px; height: 200px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
-                </div>
-                <div style="text-align: center;">
-                    <img src="assets/groundtruth-3.gif" style="width: 400px; height: 200px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
-                </div>
-            </div>
-            <p>The ground truth sequences come from cellular automata simulations with varying rule sets. By exposing the NCA to many different dynamical regimes, the encoder learns to compress each regime into a compact latent code that captures its essential character.</p>
-
-            <h2>Learning the Latent Space</h2>
-            <p>The architecture uses a variational autoencoder (VAE) to map context frames into a low-dimensional latent space. A hypernetwork then transforms each latent vector into a unique set of NCA weights. This means every point in the latent space corresponds to a different cellular automaton with its own dynamics.</p>
-            <p>The piano keyboard above lets you explore this space directly. Each key is assigned a saved latent vector, and pressing multiple keys simultaneously interpolates between them, blending the dynamics of different automata in real time. The result is a continuous, playable space of emergent behaviors.</p>
-
-            <h2>Future Potential</h2>
-            <p>This approach opens several interesting directions. The latent space could be conditioned on higher-level descriptions, allowing natural language control over the generated dynamics. Larger grids and deeper NCA architectures could capture more complex phenomena. And because the entire system runs in the browser via ONNX, it could serve as a foundation for interactive art, educational tools, or generative design applications.</p>
-            <p>The combination of neural cellular automata with learned latent spaces suggests a broader paradigm: compact, local update rules that are themselves generated by a learned model, producing an open-ended family of emergent systems from a single trained network.</p>
+            {article_html}
         </div>
     </div>
 
@@ -1505,6 +1604,10 @@ def main():
         "--max-sequences", type=int, default=0,
         help="Max sequences to export (0 = all)"
     )
+    parser.add_argument(
+        "--readme", type=str, default=None,
+        help="Path to README.md for article content (default: auto-detect from repo root)"
+    )
     args = parser.parse_args()
 
     output_dir = Path(args.output)
@@ -1518,7 +1621,7 @@ def main():
     print("=" * 60)
 
     # 1a. Load model + data
-    print("\n[1/6] Loading model and data...")
+    print("\n[1/8] Loading model and data...")
     model, cfg, device = load_model(args.checkpoint, args.device)
     dataset = load_data(args.data, cfg["context_frames"])
 
@@ -1526,30 +1629,30 @@ def main():
     spectrograms_dir = data_dir / "spectrograms"
     instrument_embeddings = {}
     if spectrograms_dir.exists():
-        print(f"\n[2/6] Loading spectrograms from {spectrograms_dir}...")
+        print(f"\n[2/8] Loading spectrograms from {spectrograms_dir}...")
         instrument_embeddings = load_instrument_embeddings(
             spectrograms_dir, model.encoder, device
         )
         print(f"Generated embeddings for {len(instrument_embeddings)} instruments")
     else:
-        print(f"\n[2/6] No spectrograms found at {spectrograms_dir}")
+        print(f"\n[2/8] No spectrograms found at {spectrograms_dir}")
         print("  Run generate_audio_visual.py to create spectrograms")
 
     # 1c. Pre-encode all sequences
-    print("\n[3/6] Encoding sequences...")
+    print("\n[3/8] Encoding sequences...")
     latents = encode_sequences(model, dataset, cfg, device, args.max_sequences)
 
     # 1d. Export ONNX models
-    print("\n[4/6] Exporting ONNX models...")
+    print("\n[4/8] Exporting ONNX models...")
     export_onnx_models(model, cfg, device, output_dir)
 
     # 1e. Export data
     n = len(latents)
-    print(f"\n[5/6] Exporting data ({n} sequences)...")
+    print(f"\n[5/8] Exporting data ({n} sequences)...")
     export_data(dataset, latents, instrument_embeddings, cfg, output_dir, args.max_sequences)
 
     # 1f. Copy static assets (groundtruth GIFs, etc.)
-    print("\n[6/6] Copying static assets...")
+    print("\n[6/8] Copying static assets...")
     assets_src = Path(__file__).parent / "build_assets" / "gifs"
     assets_dst = output_dir / "assets"
     assets_dst.mkdir(parents=True, exist_ok=True)
@@ -1559,9 +1662,21 @@ def main():
         copied += 1
     print(f"Copied {copied} groundtruth GIFs to assets/")
 
-    # 1g. Generate HTML
-    print("\n[7/7] Generating index.html...")
-    generate_html(cfg, output_dir)
+    # 1g. Load README and convert to HTML
+    article_html = ""
+    readme_path = Path(args.readme) if args.readme else Path(__file__).parent.parent / "README.md"
+    if readme_path.exists():
+        print(f"\n[7/8] Loading article from {readme_path}...")
+        with open(readme_path, "r") as f:
+            readme_content = f.read()
+        article_html = markdown_to_html(readme_content)
+        print(f"  Converted {len(readme_content)} chars markdown to HTML")
+    else:
+        print(f"\n[7/8] No README found at {readme_path}, using empty article")
+
+    # 1h. Generate HTML
+    print("\n[8/8] Generating index.html...")
+    generate_html(cfg, output_dir, article_html)
 
     print("\n" + "=" * 60)
     print(f"Build complete! Output in: {output_dir}")
