@@ -62,7 +62,14 @@ def markdown_to_html(md_text: str) -> str:
             html_lines.append('<hr>')
             continue
 
-        # Headers
+        # Headers (check longer prefixes first)
+        if stripped.startswith('### '):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            text = stripped[4:]
+            html_lines.append(f'<h3>{text}</h3>')
+            continue
         if stripped.startswith('## '):
             if in_list:
                 html_lines.append('</ul>')
@@ -542,6 +549,9 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Neuromusical Cellular Automata</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -551,7 +561,15 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             min-height: 100vh;
             padding: 20px;
         }}
-        h1 {{ color: #4fc3f7; margin-bottom: 5px; text-align: center; }}
+        h1 {{
+            font-family: 'Orbitron', sans-serif;
+            font-size: 2.8em;
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: 2px;
+            text-shadow: 0 0 20px rgba(79, 195, 247, 0.3);
+        }}
         .subtitle {{ color: #888; text-align: center; margin-bottom: 20px; }}
 
         .main-container {{
@@ -746,6 +764,12 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             font-size: 1.6em;
             border-bottom: 1px solid #333;
             padding-bottom: 8px;
+        }}
+        .article h3 {{
+            color: #81d4fa;
+            margin-top: 32px;
+            margin-bottom: 10px;
+            font-size: 1.2em;
         }}
         .article p {{
             color: #ccc;
