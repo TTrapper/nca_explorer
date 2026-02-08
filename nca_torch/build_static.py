@@ -730,6 +730,10 @@ def _build_html(cfg, article_html: str = ""):
                 <div class="viewer-label">Ground Truth</div>
                 <canvas id="gtCanvas" width="256" height="256"></canvas>
             </div>
+            <div class="viewer" id="specViewer" style="display: none;">
+                <div class="viewer-label">Spectrogram</div>
+                <img id="specImg" width="256" height="256" style="border: 2px solid #4fc3f7; background: #000; image-rendering: pixelated;" />
+            </div>
             <div class="viewer">
                 <div class="viewer-label">NCA Prediction</div>
                 <canvas id="ncaCanvas" width="256" height="256"></canvas>
@@ -768,25 +772,17 @@ def _build_html(cfg, article_html: str = ""):
                 </div>
 
                 <div class="control-row" style="margin-top: 10px;">
+                    <div style="display: flex; flex-direction: column; align-items: center; margin-right: 15px;">
+                        <select id="instrumentSelect" class="instrument-select"></select>
+                        <span id="instrumentStatus" class="instrument-loading"></span>
+                    </div>
                     <div class="piano-keyboard" id="pianoKeyboard"></div>
                     <div class="noise-meter">
                         <div class="noise-meter-label">Perturbation</div>
                         <div class="noise-meter-track">
                             <div class="noise-meter-fill" id="noiseMeterFill"></div>
                         </div>
-                        <div class="noise-meter-value" id="noiseMeterValue">0</div>
-                    </div>
-                </div>
-                <div class="control-row">
-                    <select id="instrumentSelect" class="instrument-select"></select>
-                    <span id="instrumentStatus" class="instrument-loading"></span>
-                </div>
-
-                <div class="control-row">
-                    <div class="slider-group">
-                        <label>Speed:</label>
-                        <input type="range" id="speedSlider" min="0.1" max="3" step="0.1" value="1">
-                        <span class="value" id="speedVal">1.0x</span>
+                        <div class="noise-meter-value" id="noiseMeterValue">1.0</div>
                     </div>
                 </div>
 
@@ -833,7 +829,7 @@ def _build_html(cfg, article_html: str = ""):
     let playbackSpeed = 1.0;
     let currentMode = 'sequence';
     let isLoading = false;  // true while selectSequence/decodeLatent in progress
-    let noiseLevel = 0;     // 0 = off, keys 1-9 map to 0.1-0.9, key 0 = 1.0
+    let noiseLevel = 1.0;   // default to max; keys 1-9 map to 0.1-0.9, key 0 = 1.0
 
     // Current latent & decoded params
     let currentZ = null;           // Float32Array [latentDim]
@@ -1057,23 +1053,48 @@ def _build_html(cfg, article_html: str = ""):
         currentFrameIdx = 0;
     }}
 
+    let lastPressedSlot = -1;  // Track last pressed key for spectrogram display
+
     async function randomLatent() {{
         currentZ = randnArray(latentDim);
         await decodeLatent(currentZ);
         currentFrameIdx = 0;
         document.getElementById('latentSource').textContent = 'random';
+        lastPressedSlot = -1;
+        document.getElementById('specImg').src = '';
+    }}
+
+    const NOTE_ORDER = ['F4', 'Fs4', 'G4', 'Gs4', 'A4', 'As4', 'B4',
+                        'C5', 'Cs5', 'D5', 'Ds5', 'E5', 'F5', 'Fs5',
+                        'G5', 'Gs5', 'A5', 'As5', 'B5'];
+
+    function updateSpectrogramDisplay() {{
+        const specImg = document.getElementById('specImg');
+        if (currentMode !== 'latent' || lastPressedSlot < 0) {{
+            specImg.src = '';
+            return;
+        }}
+        const note = NOTE_ORDER[lastPressedSlot];
+        specImg.src = `spectrograms/${{currentInstrument}}/${{note}}.png`;
     }}
 
     async function applySlotSelection() {{
         // Collect active slots with embeddings
         const activeSlots = [];
+        const activeIndices = [];
         for (let i = 0; i < 19; i++) {{
             if (slotActive[i] && slotEmbeddings[i]) {{
                 activeSlots.push(slotEmbeddings[i]);
+                activeIndices.push(i);
             }}
         }}
         if (activeSlots.length === 0) {{
             return;
+        }}
+        // Track last pressed for spectrogram display
+        if (activeIndices.length > 0) {{
+            lastPressedSlot = activeIndices[activeIndices.length - 1];
+            updateSpectrogramDisplay();
         }}
         // Average embeddings for chord
         const mean = new Float32Array(activeSlots[0].length).fill(0);
@@ -1094,10 +1115,6 @@ def _build_html(cfg, article_html: str = ""):
     // -----------------------------------------------------------------------
     // Instrument embeddings
     // -----------------------------------------------------------------------
-    const NOTE_ORDER = ['F4', 'Fs4', 'G4', 'Gs4', 'A4', 'As4', 'B4',
-                        'C5', 'Cs5', 'D5', 'Ds5', 'E5', 'F5', 'Fs5',
-                        'G5', 'Gs5', 'A5', 'As5', 'B5'];
-
     function loadInstrumentEmbeddings(instrumentName) {{
         const embeddings = manifest.instrument_embeddings[instrumentName];
         if (!embeddings) {{
@@ -1237,6 +1254,7 @@ def _build_html(cfg, article_html: str = ""):
         currentInstrument = e.target.value;
         loadInstrumentEmbeddings(currentInstrument);
         loadInstrument(currentInstrument);
+        updateSpectrogramDisplay();
     }});
 
     // Audio helpers using Tone.Sampler
@@ -1354,6 +1372,7 @@ def _build_html(cfg, article_html: str = ""):
         currentMode = mode;
         const isSeq = mode === 'sequence';
         document.getElementById('gtViewer').style.display = isSeq ? '' : 'none';
+        document.getElementById('specViewer').style.display = isSeq ? 'none' : '';
         document.getElementById('contextSection').style.display = isSeq ? '' : 'none';
         document.getElementById('seqControls').style.display = isSeq ? '' : 'none';
         document.getElementById('latentControls').style.display = isSeq ? 'none' : '';
@@ -1404,11 +1423,6 @@ def _build_html(cfg, article_html: str = ""):
         selectSequence(Math.floor(Math.random() * numSequences));
     }});
 
-    document.getElementById('speedSlider').addEventListener('input', (e) => {{
-        playbackSpeed = parseFloat(e.target.value);
-        document.getElementById('speedVal').textContent = playbackSpeed.toFixed(1) + 'x';
-    }});
-
     document.getElementById('randomLatentBtn').addEventListener('click', () => {{
         randomLatent();
     }});
@@ -1431,13 +1445,19 @@ def _build_html(cfg, article_html: str = ""):
         return gifWorkerBlob;
     }}
 
+    function hasSpectrogram() {{
+        const specImg = document.getElementById('specImg');
+        return currentMode === 'latent' && lastPressedSlot >= 0 && specImg.src && specImg.complete;
+    }}
+
     async function startRecording() {{
         // Reset simulation so recording starts from the first frame
         await decodeLatent(currentZ);
         currentFrameIdx = 0;
 
         const workerScript = await ensureGifWorker();
-        const gifWidth = (currentMode === 'sequence') ? gifSize * 2 : gifSize;
+        const sideBySide = currentMode === 'sequence' || hasSpectrogram();
+        const gifWidth = sideBySide ? gifSize * 2 : gifSize;
         gifEncoder = new GIF({{
             workers: 2,
             quality: 10,
@@ -1454,15 +1474,21 @@ def _build_html(cfg, article_html: str = ""):
         if (!isRecording || !gifEncoder) return;
         // Offscreen canvas for compositing
         const offscreen = document.createElement('canvas');
-        const sideBySide = currentMode === 'sequence';
+        const showSpec = hasSpectrogram();
+        const sideBySide = currentMode === 'sequence' || showSpec;
         offscreen.width = sideBySide ? gifSize * 2 : gifSize;
         offscreen.height = gifSize;
         const octx = offscreen.getContext('2d');
 
-        if (sideBySide) {{
+        if (currentMode === 'sequence') {{
             // NCA on left, GT on right
             octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
             octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
+        }} else if (showSpec) {{
+            // Spectrogram on left, NCA on right
+            const specImg = document.getElementById('specImg');
+            octx.drawImage(specImg, 0, 0, gifSize, gifSize);
+            octx.drawImage(ncaCanvas, gifSize, 0, gifSize, gifSize);
         }} else {{
             octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
         }}
@@ -1569,6 +1595,7 @@ def _build_html(cfg, article_html: str = ""):
         populateInstrumentDropdown();
         loadInstrumentEmbeddings(currentInstrument);
         loadInstrument(currentInstrument);
+        updateNoiseMeter();
 
         // Load first sequence
         statusEl.textContent = 'Loading first sequence...';
@@ -1660,7 +1687,16 @@ def main():
     for gif in sorted(assets_src.glob("*.gif")):
         shutil.copy2(gif, assets_dst / gif.name)
         copied += 1
-    print(f"Copied {copied} groundtruth GIFs to assets/")
+    print(f"  Copied {copied} groundtruth GIFs to assets/")
+
+    # Copy spectrograms for display in free latent mode
+    if spectrograms_dir.exists():
+        spec_dst = output_dir / "spectrograms"
+        if spec_dst.exists():
+            shutil.rmtree(spec_dst)
+        shutil.copytree(spectrograms_dir, spec_dst)
+        spec_count = sum(1 for _ in spec_dst.glob("*/*.png"))
+        print(f"  Copied {spec_count} spectrograms to spectrograms/")
 
     # 1g. Load README and convert to HTML
     article_html = ""
