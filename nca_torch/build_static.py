@@ -328,7 +328,7 @@ def _build_html(cfg):
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NCA Dynamics Viewer</title>
+    <title>Neural CA Generator</title>
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -517,12 +517,36 @@ def _build_html(cfg):
         .lib-delete {{ color: #f44336; background: none; border: none; cursor: pointer; font-size: 1em; padding: 0 4px; width: auto; height: auto; flex-shrink: 0; }}
         .lib-empty {{ color: #888; padding: 8px; text-align: center; font-size: 0.85em; }}
         .piano-key.drag-over {{ outline: 2px dashed #4fc3f7; outline-offset: -2px; }}
+
+        .article {{
+            max-width: 720px;
+            margin: 60px auto 40px;
+            line-height: 1.7;
+            font-size: 1.05em;
+        }}
+        .article h2 {{
+            color: #4fc3f7;
+            margin-top: 48px;
+            margin-bottom: 12px;
+            font-size: 1.6em;
+            border-bottom: 1px solid #333;
+            padding-bottom: 8px;
+        }}
+        .article p {{
+            color: #ccc;
+            margin-bottom: 16px;
+        }}
+        .article hr {{
+            border: none;
+            border-top: 1px solid #333;
+            margin: 48px 0;
+        }}
     </style>
 </head>
 <body>
     <div class="main-container">
-        <h1>NCA Dynamics Viewer</h1>
-        <p class="subtitle">Comparing ground truth simulation vs learned NCA dynamics</p>
+        <h1>Neural CA Generator</h1>
+        <p class="subtitle">Play the piano to explore the space of Neural Cellular Automata. Each note samples a latent space which then generates an NCA on the fly!</p>
 
         <div class="viewers">
             <div class="viewer" id="gtViewer">
@@ -608,6 +632,26 @@ def _build_html(cfg):
 
         <div class="status">
             <span id="connStatus" class="disconnected">Loading...</span>
+        </div>
+
+        <div class="article">
+            <hr>
+
+            <h2>Neural Cellular Automata</h2>
+            <p>Cellular automata are systems of simple cells on a grid, each updating its state based on its neighbors. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules. Neural Cellular Automata (NCA) replace the hand-designed update rules with a small neural network, allowing the system to learn its own dynamics from data.</p>
+            <p>In an NCA, each cell looks at its immediate neighborhood and passes that information through a two-layer convolutional network to produce an update. The same weights are shared across every cell and every timestep, making the system translation-invariant and inherently parallelizable. Despite having only a few thousand parameters, NCAs can learn to grow, regenerate, and sustain surprisingly complex patterns.</p>
+
+            <h2>Dynamic Data</h2>
+            <p>Rather than learning to produce a single static image, the NCA here is trained on sequences of frames from dynamic simulations. Given a few context frames as input, the model learns to predict how the system evolves over time. Each training sequence captures a different behavior, forcing the model to internalize the underlying rules of motion rather than memorizing individual frames.</p>
+            <p>The ground truth sequences come from cellular automata simulations with varying rule sets. By exposing the NCA to many different dynamical regimes, the encoder learns to compress each regime into a compact latent code that captures its essential character.</p>
+
+            <h2>Learning the Latent Space</h2>
+            <p>The architecture uses a variational autoencoder (VAE) to map context frames into a low-dimensional latent space. A hypernetwork then transforms each latent vector into a unique set of NCA weights. This means every point in the latent space corresponds to a different cellular automaton with its own dynamics.</p>
+            <p>The piano keyboard above lets you explore this space directly. Each key is assigned a saved latent vector, and pressing multiple keys simultaneously interpolates between them, blending the dynamics of different automata in real time. The result is a continuous, playable space of emergent behaviors.</p>
+
+            <h2>Future Potential</h2>
+            <p>This approach opens several interesting directions. The latent space could be conditioned on higher-level descriptions, allowing natural language control over the generated dynamics. Larger grids and deeper NCA architectures could capture more complex phenomena. And because the entire system runs in the browser via ONNX, it could serve as a foundation for interactive art, educational tools, or generative design applications.</p>
+            <p>The combination of neural cellular automata with learned latent spaces suggests a broader paradigm: compact, local update rules that are themselves generated by a learned model, producing an open-ended family of emergent systems from a single trained network.</p>
         </div>
     </div>
 
