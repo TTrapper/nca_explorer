@@ -2,6 +2,7 @@
 
 The demo above generates a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint.
 
+
 ## How to Play
 
 - **Piano keys**: Click or use keyboard (A-L for white keys, W/E/R/Y/U/O/P for black keys). Each note loads a different latent vector that generates a unique NCA.
@@ -12,11 +13,45 @@ The demo above generates a unique Neural Cellular Automaton for each sound you p
 
 ---
 
+## Why This Project
+
+I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes that we can watch unfold and evolve. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but predicatbly most setups were duds.
+
+This got me thinking about the embeddings space of NCA parameters, and how we could explore it. To get a smoother and hopefully more interesting embedding space, I decided to try training a neural network to *generate* NCA parameters from a conditioned latent space. So I've ended up with a neural network that generates neural networks from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the latent space, which is very fun.
+
+## Hardware Constraints
+
+I landed on the following architecture, which is extremely tiny because I only have access to an old laptop with GTX 960M with very limited vram. I needed a fast enough turn-around time on experiments and, with this GPU, running inference on even a single frame for modern architectures can take minutes. However, a benefit of this tiny model is the ability to run the demo in your browser in realtime on the CPU!
+
+![Architecture](assets/architecture.png)
+
+### Architecture Details
+
+**VAE Encoder** (Context Frames → Latent)
+- Input: 4 context frames × 3 RGB channels = 12 channels, 32×32
+- Conv layers: 12→32→64→128, each 3×3 kernel, stride 2, BatchNorm, LeakyReLU(0.2)
+- Flatten: 128 × 4 × 4 = 2,048 features
+- Two linear heads (μ and σ): 2,048 → 64 each
+- Output: 64-dimensional latent vector z
+
+**HyperNetwork** (Latent → NCA Weights)
+- Input: 64-dim latent
+- MLP: 64 → 256 → 256 → 4,640, with LayerNorm + ReLU
+- Output: weights for 2-layer NCA (2×[16×16×3×3] + 2×[16] = 4,640 params)
+
+**NCA** (Grid Evolution)
+- Grid: 16 channels (3 RGB visible + 13 hidden state)
+- Layer 1: 16→16 channels, 3×3 conv, circular padding, ReLU
+- Layer 2: 16→16 channels, 3×3 conv, circular padding, residual add
+- Parameters generated per-sample by HyperNetwork
+
+---
+
 ## Cellular Automata
 
 Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.
 
-Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions. For example, a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood, giving us 2^10 (1024) entries per rule. Each entry maps the 9-cell state at time *t* to the center cell's state at time *t+1*. The rule is then convolved over the entire grid to get the new state at each time step.
+Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood and the 1 center cell's new state ,which gives us 2^10 (1024) entries per rule. Each entry maps the 9-cell states at time *t* to the center cell's state at time *t+1*. The rule is then convolved over the entire grid to get the new state at each time step.
 
 ![Rainbow Gliders|512x512](assets/rainbow_gliders.gif)
 

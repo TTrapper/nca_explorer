@@ -772,8 +772,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             margin: 24px 0;
         }}
         .article-img img {{
-            max-width: 400px;
-            height: auto;
+            max-width: 100%;
             image-rendering: pixelated;
             border: 1px solid #444;
             border-radius: 4px;
@@ -1772,14 +1771,19 @@ def main():
 
     # 1f. Copy static assets (groundtruth GIFs, etc.)
     print("\n[6/8] Copying static assets...")
-    assets_src = Path(__file__).parent / "build_assets" / "gifs"
+    assets_base = Path(__file__).parent / "build_assets"
     assets_dst = output_dir / "assets"
     assets_dst.mkdir(parents=True, exist_ok=True)
     copied = 0
-    for gif in sorted(assets_src.glob("*.gif")):
+    # Copy GIFs from gifs/ subdirectory
+    for gif in sorted((assets_base / "gifs").glob("*.gif")):
         shutil.copy2(gif, assets_dst / gif.name)
         copied += 1
-    print(f"  Copied {copied} groundtruth GIFs to assets/")
+    # Copy other assets (png, etc.) from build_assets root
+    for asset in sorted(assets_base.glob("*.png")):
+        shutil.copy2(asset, assets_dst / asset.name)
+        copied += 1
+    print(f"  Copied {copied} assets to assets/")
 
     # Copy spectrograms for display in free latent mode
     if spectrograms_dir.exists():
