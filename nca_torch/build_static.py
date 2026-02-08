@@ -18,6 +18,7 @@ Usage:
 
 import argparse
 import json
+import shutil
 import struct
 import sys
 from pathlib import Path
@@ -656,10 +657,24 @@ def _build_html(cfg):
 
             <h2>Neural Cellular Automata</h2>
             <p>Cellular automata are systems of simple cells on a grid, each updating its state based on its neighbors. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules. Neural Cellular Automata (NCA) replace the hand-designed update rules with a small neural network, allowing the system to learn its own dynamics from data.</p>
+            <div style="display: flex; justify-content: center; margin: 24px 0;">
+                <img src="assets/rainbow_gliders.gif" style="width: 512px; height: 512px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
+            </div>
             <p>In an NCA, each cell looks at its immediate neighborhood and passes that information through a two-layer convolutional network to produce an update. The same weights are shared across every cell and every timestep, making the system translation-invariant and inherently parallelizable. Despite having only a few thousand parameters, NCAs can learn to grow, regenerate, and sustain surprisingly complex patterns.</p>
 
             <h2>Dynamic Data</h2>
             <p>Rather than learning to produce a single static image, the NCA here is trained on sequences of frames from dynamic simulations. Given a few context frames as input, the model learns to predict how the system evolves over time. Each training sequence captures a different behavior, forcing the model to internalize the underlying rules of motion rather than memorizing individual frames.</p>
+            <div style="display: flex; justify-content: center; gap: 24px; margin: 24px 0; flex-wrap: wrap;">
+                <div style="text-align: center;">
+                    <img src="assets/groundtruth-1.gif" style="width: 400px; height: 200px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
+                </div>
+                <div style="text-align: center;">
+                    <img src="assets/groundtruth-2.gif" style="width: 400px; height: 200px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
+                </div>
+                <div style="text-align: center;">
+                    <img src="assets/groundtruth-3.gif" style="width: 400px; height: 200px; image-rendering: pixelated; border: 1px solid #444; border-radius: 4px;" />
+                </div>
+            </div>
             <p>The ground truth sequences come from cellular automata simulations with varying rule sets. By exposing the NCA to many different dynamical regimes, the encoder learns to compress each regime into a compact latent code that captures its essential character.</p>
 
             <h2>Learning the Latent Space</h2>
@@ -1671,8 +1686,19 @@ def main():
     print(f"\n[4/5] Exporting data ({n} sequences)...")
     export_data(dataset, latents, library, cfg, output_dir, args.max_sequences)
 
-    # 1e. Generate HTML
-    print("\n[5/5] Generating index.html...")
+    # 1e. Copy static assets (groundtruth GIFs, etc.)
+    print("\n[5/6] Copying static assets...")
+    assets_src = Path(__file__).parent / "build_assets" / "gifs"
+    assets_dst = output_dir / "assets"
+    assets_dst.mkdir(parents=True, exist_ok=True)
+    copied = 0
+    for gif in sorted(assets_src.glob("*.gif")):
+        shutil.copy2(gif, assets_dst / gif.name)
+        copied += 1
+    print(f"Copied {copied} groundtruth GIFs to assets/")
+
+    # 1f. Generate HTML
+    print("\n[6/6] Generating index.html...")
     generate_html(cfg, output_dir)
 
     print("\n" + "=" * 60)
