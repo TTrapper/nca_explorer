@@ -518,6 +518,22 @@ def _build_html(cfg):
         .lib-empty {{ color: #888; padding: 8px; text-align: center; font-size: 0.85em; }}
         .piano-key.drag-over {{ outline: 2px dashed #4fc3f7; outline-offset: -2px; }}
 
+        .noise-meter {{
+            display: flex; flex-direction: column; align-items: center;
+            gap: 4px; margin-left: 10px; user-select: none;
+        }}
+        .noise-meter-label {{ font-size: 0.7em; color: #888; text-transform: uppercase; letter-spacing: 0.05em; }}
+        .noise-meter-track {{
+            width: 18px; height: 90px; background: #222; border-radius: 4px;
+            border: 1px solid #444; position: relative; overflow: hidden;
+        }}
+        .noise-meter-fill {{
+            position: absolute; bottom: 0; left: 0; right: 0;
+            background: linear-gradient(to top, #4fc3f7, #f44336);
+            border-radius: 0 0 3px 3px; transition: height 0.1s;
+        }}
+        .noise-meter-value {{ font-size: 0.75em; color: #4fc3f7; font-family: monospace; }}
+
         .article {{
             max-width: 720px;
             margin: 60px auto 40px;
@@ -597,17 +613,18 @@ def _build_html(cfg):
                 <div id="latentControls" style="display:none">
                     <div class="control-row">
                         <button id="randomLatentBtn">Random Latent</button>
-                        <button id="perturbLatentBtn">Perturb Latent</button>
-                        <div class="slider-group">
-                            <label>Perturb:</label>
-                            <input type="range" id="perturbSlider" min="0.01" max="1.0" step="0.01" value="0.1">
-                            <span class="value" id="perturbVal">0.10</span>
-                        </div>
                     </div>
                 </div>
 
                 <div class="control-row" style="margin-top: 10px;">
                     <div class="piano-keyboard" id="pianoKeyboard"></div>
+                    <div class="noise-meter">
+                        <div class="noise-meter-label">Perturbation</div>
+                        <div class="noise-meter-track">
+                            <div class="noise-meter-fill" id="noiseMeterFill"></div>
+                        </div>
+                        <div class="noise-meter-value" id="noiseMeterValue">0</div>
+                    </div>
                 </div>
                 <div class="control-row">
                     <select id="instrumentSelect" class="instrument-select"></select>
@@ -680,6 +697,7 @@ def _build_html(cfg):
     let playbackSpeed = 1.0;
     let currentMode = 'sequence';
     let isLoading = false;  // true while selectSequence/decodeLatent in progress
+    let noiseLevel = 0;     // 0 = off, keys 1-9 map to 0.1-0.9, key 0 = 1.0
 
     // Current latent & decoded params
     let currentZ = null;           // Float32Array [latentDim]
@@ -914,15 +932,6 @@ def _build_html(cfg):
         document.getElementById('latentSource').textContent = 'random';
     }}
 
-    async function perturbLatent(scale) {{
-        for (let i = 0; i < latentDim; i++) {{
-            currentZ[i] += randn() * scale;
-        }}
-        await decodeLatent(currentZ);
-        currentFrameIdx = 0;
-        document.getElementById('latentSource').textContent = 'perturb';
-    }}
-
     async function applySlotSelection() {{
         if (selectedSlots.size === 0) return;
         const mean = new Float32Array(latentDim);
@@ -932,6 +941,10 @@ def _build_html(cfg):
         }}
         const n = selectedSlots.size;
         for (let i = 0; i < latentDim; i++) mean[i] /= n;
+        // Apply noise based on number key selection
+        if (noiseLevel > 0) {{
+            for (let i = 0; i < latentDim; i++) mean[i] += randn() * noiseLevel;
+        }}
         currentZ = mean;
         await decodeLatent(currentZ);
         currentFrameIdx = 0;
@@ -1185,9 +1198,28 @@ def _build_html(cfg):
     }}
 
     // Keyboard shortcuts
+    // Number keys 1-9,0 set noise level
+    const noiseKeyMap = {{ '1': 0.1, '2': 0.2, '3': 0.3, '4': 0.4, '5': 0.5, '6': 0.6, '7': 0.7, '8': 0.8, '9': 0.9, '0': 1.0 }};
+
+    function updateNoiseMeter() {{
+        document.getElementById('noiseMeterFill').style.height = (noiseLevel * 100) + '%';
+        document.getElementById('noiseMeterValue').textContent = noiseLevel > 0 ? noiseLevel.toFixed(1) : '0';
+        document.getElementById('latentSource').textContent =
+            noiseLevel > 0 ? 'perturb: ' + noiseLevel.toFixed(1) : 'encoded';
+    }}
+
     document.addEventListener('keydown', (e) => {{
         if (e.target.tagName === 'INPUT' || e.target.tagName === 'TEXTAREA') return;
         if (e.repeat) return;
+
+        // Number keys toggle noise level
+        if (e.key in noiseKeyMap) {{
+            const level = noiseKeyMap[e.key];
+            noiseLevel = (noiseLevel === level) ? 0 : level;
+            updateNoiseMeter();
+            return;
+        }}
+
         const idx = keyToSlot[e.key];
         if (idx !== undefined && filledSlots.has(idx)) {{
             startTone(idx);
@@ -1409,15 +1441,6 @@ def _build_html(cfg):
 
     document.getElementById('randomLatentBtn').addEventListener('click', () => {{
         randomLatent();
-    }});
-
-    document.getElementById('perturbLatentBtn').addEventListener('click', () => {{
-        const scale = parseFloat(document.getElementById('perturbSlider').value);
-        perturbLatent(scale);
-    }});
-
-    document.getElementById('perturbSlider').addEventListener('input', (e) => {{
-        document.getElementById('perturbVal').textContent = parseFloat(e.target.value).toFixed(2);
     }});
 
     // -----------------------------------------------------------------------
