@@ -37,22 +37,88 @@ from datasets import SequenceDataset
 # Markdown to HTML converter (simple)
 # ---------------------------------------------------------------------------
 
+def parse_table_cell(cell: str) -> str:
+    """Parse a table cell, handling images and text."""
+    cell = cell.strip()
+    # Check for image
+    img_match = re.match(r'!\[([^\]|]*)\|?(\d+)?x?(\d+)?\]\(([^)]+)\)', cell)
+    if img_match:
+        alt, w, h, src = img_match.groups()
+        style = ""
+        if w:
+            width = int(w)
+            height = int(h) if h else width
+            style = f' style="width: {width}px; height: {height}px;"'
+        return f'<img src="{src}" alt="{alt}"{style} />'
+    return process_inline_markdown(cell)
+
+
 def markdown_to_html(md_text: str) -> str:
     """Convert basic markdown to HTML for the article section."""
     lines = md_text.split('\n')
     html_lines = []
     in_list = False
+    in_table = False
 
     for line in lines:
         stripped = line.strip()
 
-        # Skip empty lines but close lists
+        # Skip empty lines but close lists/tables
         if not stripped:
             if in_list:
                 html_lines.append('</ul>')
                 in_list = False
+            if in_table:
+                html_lines.append('</table>')
+                in_table = False
             html_lines.append('')
             continue
+
+        # Table rows (start with |)
+        if stripped.startswith('|') and stripped.endswith('|'):
+            if in_list:
+                html_lines.append('</ul>')
+                in_list = False
+            # Skip separator rows like |:---:|:---:|
+            inner = stripped[1:-1]  # Remove outer |
+            if all(c in ':-| ' for c in inner):
+                continue
+            # Parse table cells - handle | inside image syntax ![alt|size]
+            # Replace | inside [...] temporarily, then split, then restore
+            def split_table_cells(s):
+                cells = []
+                current = ""
+                bracket_depth = 0
+                for ch in s:
+                    if ch == '[':
+                        bracket_depth += 1
+                        current += ch
+                    elif ch == ']':
+                        bracket_depth -= 1
+                        current += ch
+                    elif ch == '|' and bracket_depth == 0:
+                        cells.append(current)
+                        current = ""
+                    else:
+                        current += ch
+                if current:
+                    cells.append(current)
+                return cells
+            cells = split_table_cells(inner)
+            if not in_table:
+                html_lines.append('<table class="gallery-table">')
+                in_table = True
+            html_lines.append('<tr>')
+            for cell in cells:
+                content = parse_table_cell(cell)
+                html_lines.append(f'<td>{content}</td>')
+            html_lines.append('</tr>')
+            continue
+
+        # Close table if we hit non-table content
+        if in_table:
+            html_lines.append('</table>')
+            in_table = False
 
         # Horizontal rule
         if stripped == '---':
@@ -117,6 +183,8 @@ def markdown_to_html(md_text: str) -> str:
 
     if in_list:
         html_lines.append('</ul>')
+    if in_table:
+        html_lines.append('</table>')
 
     return '\n            '.join(html_lines)
 
@@ -797,6 +865,21 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         }}
         .article-img img {{
             max-width: 100%;
+            image-rendering: pixelated;
+            border: 1px solid #444;
+            border-radius: 4px;
+        }}
+        .gallery-table {{
+            width: 100%;
+            border-collapse: collapse;
+            margin: 24px 0;
+        }}
+        .gallery-table td {{
+            text-align: center;
+            padding: 8px;
+            vertical-align: middle;
+        }}
+        .gallery-table img {{
             image-rendering: pixelated;
             border: 1px solid #444;
             border-radius: 4px;
@@ -1803,6 +1886,14 @@ def main():
     for gif in sorted((assets_base / "gifs").glob("*.gif")):
         shutil.copy2(gif, assets_dst / gif.name)
         copied += 1
+    # Copy gallery GIFs
+    gallery_src = assets_base / "gifs" / "gallery"
+    if gallery_src.exists():
+        gallery_dst = assets_dst / "gallery"
+        gallery_dst.mkdir(parents=True, exist_ok=True)
+        for gif in sorted(gallery_src.glob("*.gif")):
+            shutil.copy2(gif, gallery_dst / gif.name)
+            copied += 1
     # Copy other assets (png, etc.) from build_assets root
     for asset in sorted(assets_base.glob("*.png")):
         shutil.copy2(asset, assets_dst / asset.name)
