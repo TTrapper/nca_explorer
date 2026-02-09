@@ -339,12 +339,20 @@ def extract_audio_features_for_circles(
     # Sort by frequency for consistent ordering
     harmonics = sorted(harmonics, key=lambda h: h['freq'])
 
+    # Extract fundamental frequency (first harmonic) and normalize to F4-B5 range
+    # F4 ≈ 349 Hz, B5 ≈ 988 Hz
+    fundamental_freq = harmonics[0]['freq'] if harmonics else 500
+    # Normalize to 0-1 range for F4-B5 (with some padding for pitch-shifted notes)
+    pitch_norm = np.clip((fundamental_freq - 300) / 750, 0, 1)  # 300-1050 Hz range
+
     return {
         'rms': rms,
         'centroid': centroid,
         'onset': onset,
         'harmonics': harmonics,
         'num_harmonics': len(harmonics),
+        'fundamental_freq': fundamental_freq,
+        'pitch_norm': pitch_norm,  # 0 = low (F4), 1 = high (B5)
     }
 
 
@@ -358,12 +366,12 @@ def audio_to_circles(
     Generate circle visualization based on audio features.
 
     Each detected harmonic becomes a circle:
-    - Color: based on harmonic frequency (low = red, high = blue)
+    - Color: base hue from pitch (low = red, high = blue), each harmonic offsets for variety
     - Size: based on harmonic magnitude × RMS
-    - Position: orbiting, with fundamental at center
+    - Position: orbiting, with fundamental near center
 
     Args:
-        features: Dict with 'rms', 'centroid', 'onset', 'harmonics' arrays
+        features: Dict with 'rms', 'centroid', 'onset', 'harmonics', 'pitch_norm' arrays
         frame_idx: Current frame index
         size: Image size
         base_direction: Base movement direction in radians
@@ -385,6 +393,9 @@ def audio_to_circles(
     rms = features['rms'][idx]
     onset = features['onset'][idx]
 
+    # Pitch normalized to F4-B5 range (0 = low, 1 = high)
+    pitch = features.get('pitch_norm', 0.5)
+
     # Accumulate velocity for smooth motion
     speed = 0.3 + onset * 0.7
     dx = np.cos(base_direction) * speed * frame_idx * 0.4
@@ -393,7 +404,6 @@ def audio_to_circles(
     num_harmonics = len(harmonics)
 
     for i, harmonic in enumerate(harmonics):
-        freq_norm = harmonic['freq_normalized']
         magnitude = harmonic['magnitude']
 
         # Position: harmonics orbit around center
@@ -408,9 +418,14 @@ def audio_to_circles(
         cx = cx % size
         cy = cy % size
 
-        # Color based on frequency (low = red, high = blue)
-        hue = freq_norm * 0.7
-        r, g, b = colorsys.hsv_to_rgb(hue, 0.85, 0.7 + magnitude * 0.3)
+        # Color: base hue from pitch, offset by harmonic index for variety
+        # Low pitch = red (0), high pitch = blue (0.6)
+        # Each harmonic shifts hue slightly for multi-colored circles per note
+        base_hue = pitch * 0.6
+        hue = (base_hue + i * 0.12) % 1.0  # Each harmonic offsets by ~12%
+        saturation = 0.85
+        value = 0.7 + magnitude * 0.3
+        r, g, b = colorsys.hsv_to_rgb(hue, saturation, value)
 
         # Size based on magnitude and RMS
         # Fundamental (i=0) is largest, higher harmonics smaller
