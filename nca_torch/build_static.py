@@ -396,12 +396,20 @@ def load_model(checkpoint_path: str, dev: str = "cpu"):
 
 def load_data(data_path: str, context_frames: int):
     """Load sequence dataset."""
+    # First check sequence length to determine valid future_frames
+    import numpy as np
+    sequences = np.load(data_path)
+    seq_length = sequences.shape[1]
+    # future_frames = seq_length - context_frames, but at least 1
+    max_future = max(1, seq_length - context_frames)
+    future_frames = min(max_future, 50)  # Cap at 50
+
     dataset = SequenceDataset(
         data_path,
         context_frames=context_frames,
-        future_frames=50,
+        future_frames=future_frames,
     )
-    print(f"Loaded {dataset.num_sequences} sequences")
+    print(f"Loaded {dataset.num_sequences} sequences ({seq_length} frames each, using {future_frames} future frames)")
     return dataset
 
 
