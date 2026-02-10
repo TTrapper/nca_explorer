@@ -1,6 +1,6 @@
 # Neural Cellular Automata
 
-The demo above generates a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint.
+The demo above *generates* a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint, and facilitating the exploratin of an embeddings space of NCAs through music.
 
 
 ## How to Play
@@ -13,7 +13,7 @@ The demo above generates a unique Neural Cellular Automaton for each sound you p
 
 ## Gallery
 
-Here are some examples of intersting stable patters you might find the in the space of Neuromusical Cellular Automata. Set the **Perturbation** level high or use to the **Random Latent** button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling 3D objects with realisting lighting!
+Here are some examples of intersting stable patters you might find the in the space of Neuromusical Cellular Automata. Set the **Perturbation** level high or use to the **Random Latent** button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!
 
 | | | |
 |:---:|:---:|:---:|
@@ -25,9 +25,9 @@ Here are some examples of intersting stable patters you might find the in the sp
 
 ## Why This Project
 
-I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes that we can watch unfold and evolve. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but predicatbly most setups were duds.
+I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but predicatbly most setups were duds.
 
-This got me thinking about the embeddings space of NCA parameters, and how we could explore it. To get a smoother and hopefully more interesting embedding space, I decided to try training a neural network to *generate* NCA parameters from a conditioned latent space.
+This got me thinking about the embeddings space of NCA parameters, and how we could explore it. To get a smoother and hopefully more interesting embedding space, I decided to train a neural network to *generate* NCA parameters from a conditioned latent space.
 
 In this way, I've ended up with a neural network that generates neural networks from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the embedding space, which is very fun.
 
@@ -40,7 +40,7 @@ I landed on the following architecture, which is extremely tiny because I want t
 ### Architecture Details
 
 **VAE Encoder** (Context Frames → Latent)
-- Input: 4 context frames × 3 RGB channels = 12 channels, 32×32
+- Input: context frames, 32×32
 - Conv layers: 12→32→64→128, each 3×3 kernel, stride 2, BatchNorm, LeakyReLU(0.2)
 - Flatten: 128 × 4 × 4 = 2,048 features
 - Two linear heads (μ and σ): 2,048 → 64 each
@@ -76,11 +76,11 @@ The space of all possible NCAs is infinite, even for a constrained neighborhood,
 
 ## Learned Latent Space
 
-Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to *generate* NCAs. And that's what this Neuromusical Cellular Automata does:
+Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to *generate* NCAs. And that's what the Neuromusical Cellular Automata does:
 
 This architecture uses a **variational autoencoder (VAE)** to map context frames into a low-dimensional latent space. A **hypernetwork** then transforms each latent vector into a unique set of NCA weights. This means every point in the latent space corresponds to a different cellular automaton with its own dynamics.
 
-Because this latent space is learned it can be much smoother and more semantically meaningful than exploring the raw space of NCA parameters. Of cources, what the latent space actually learns is entirely dependent on the data used to train the model.
+Because this latent space is learned it can be much smoother and more semantically meaningful than exploring the raw space of NCA parameters. Of course, what the latent space actually learns is entirely dependent on the data used to train the model.
 
 ---
 
