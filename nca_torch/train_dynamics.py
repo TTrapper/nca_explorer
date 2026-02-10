@@ -248,8 +248,11 @@ class DynamicsTrainer:
                 # Run one NCA step
                 grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
 
-                # Extract RGB via sigmoid for loss
-                pred = torch.sigmoid(grid[:, :C])
+                # Squash RGB (sigmoid) and hidden (tanh) - applied once per step
+                grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
+
+                # Extract RGB for loss (already in [0,1] from squash)
+                pred = grid[:, :C]
 
                 # Loss against current target
                 target = future_targets[:, target_idx]  # [B, C, H, W]
@@ -268,9 +271,6 @@ class DynamicsTrainer:
                 total_step_recon += recon_loss.item()
                 total_step_kl += kl_loss.item()
                 total_step_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
-
-                # Squash RGB (sigmoid) and hidden (tanh) to prevent explosion
-                grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
 
                 # Advance target every num_steps
                 if (step + 1) % self.args.num_steps == 0 and target_idx < M - 1:
@@ -340,7 +340,10 @@ class DynamicsTrainer:
             for step in range(total_nca_steps):
                 grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
 
-                pred = torch.sigmoid(grid[:, :C])
+                # Squash first, then extract for loss
+                grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
+                pred = grid[:, :C]
+
                 target = future_targets[:, target_idx]
                 _, recon_loss, kl_loss = vae_loss(
                     pred, target, mu, logvar, self.args.kl_weight
@@ -354,9 +357,6 @@ class DynamicsTrainer:
                     loss = loss + self.args.perceptual_weight * perceptual_loss_val
 
                 batch_loss += loss.item()
-
-                # Squash RGB (sigmoid) and hidden (tanh)
-                grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
 
                 # Advance target every num_steps
                 if (step + 1) % self.args.num_steps == 0 and target_idx < M - 1:
@@ -487,7 +487,7 @@ class DynamicsTrainer:
 
             # Capture frame every num_steps
             if (step + 1) % self.args.num_steps == 0:
-                frames.append(grid[:, :C].clone())  # Already sigmoided
+                frames.append(grid[:, :C].clone())
 
         # Plot: ground truth on top, predictions on bottom
         n_frames = min(16, len(frames))

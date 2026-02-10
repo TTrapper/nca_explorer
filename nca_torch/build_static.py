@@ -1156,9 +1156,23 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         const imgSize = channels * height * width;
         const hiddenSize = gridSize - imgSize;
 
-        // Run NCA steps on initial grid
-        let gridTensor = new ort.Tensor('float32', new Float32Array(initialGrid), [1, gridChannels, height, width]);
+        // Initialize current state from FirstFrameDecoder output
+        currentNcaFrame = new Float32Array(imgSize);
+        currentHidden = new Float32Array(hiddenSize);
+        for (let i = 0; i < imgSize; i++) {{
+            currentNcaFrame[i] = initialGrid[i];
+        }}
+        for (let i = 0; i < hiddenSize; i++) {{
+            currentHidden[i] = initialGrid[imgSize + i];
+        }}
+
+        // Run NCA steps, squashing after each (matches training)
         for (let s = 0; s < numSteps; s++) {{
+            const grid = new Float32Array(gridSize);
+            grid.set(currentNcaFrame);
+            grid.set(currentHidden, imgSize);
+
+            const gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
             const out = await ncaStepSession.run({{
                 grid: gridTensor,
                 layer1_w: cachedParams.layer1_w,
@@ -1166,35 +1180,32 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                 layer2_w: cachedParams.layer2_w,
                 layer2_b: cachedParams.layer2_b,
             }});
-            gridTensor = out.new_grid;
-        }}
 
-        // Extract RGB (sigmoided) and hidden (tanh) for next step
-        const raw = gridTensor.data;
-        currentNcaFrame = new Float32Array(imgSize);
-        currentHidden = new Float32Array(hiddenSize);
-        for (let i = 0; i < imgSize; i++) {{
-            currentNcaFrame[i] = sigmoid(raw[i]);
-        }}
-        for (let i = 0; i < hiddenSize; i++) {{
-            currentHidden[i] = Math.tanh(raw[imgSize + i]);
+            // Squash after each step
+            const raw = out.new_grid.data;
+            for (let i = 0; i < imgSize; i++) {{
+                currentNcaFrame[i] = sigmoid(raw[i]);
+            }}
+            for (let i = 0; i < hiddenSize; i++) {{
+                currentHidden[i] = Math.tanh(raw[imgSize + i]);
+            }}
         }}
     }}
 
     async function stepNca() {{
-        // Build grid: currentNcaFrame (sigmoided RGB) + currentHidden (evolving)
+        // Build grid: currentNcaFrame (sigmoided RGB) + currentHidden (tanh'd)
         const gridSize = gridChannels * height * width;
         const imgSize = channels * height * width;
         const hiddenSize = gridSize - imgSize;
-        const grid = new Float32Array(gridSize);
 
-        // RGB channels from current frame (already in [0,1])
-        grid.set(currentNcaFrame);
-        // Hidden channels: evolving state
-        grid.set(currentHidden, imgSize);
-
-        let gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
         for (let s = 0; s < numSteps; s++) {{
+            // Build grid from current state
+            const grid = new Float32Array(gridSize);
+            grid.set(currentNcaFrame);
+            grid.set(currentHidden, imgSize);
+
+            // Run one NCA step
+            const gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
             const out = await ncaStepSession.run({{
                 grid: gridTensor,
                 layer1_w: cachedParams.layer1_w,
@@ -1202,18 +1213,15 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                 layer2_w: cachedParams.layer2_w,
                 layer2_b: cachedParams.layer2_b,
             }});
-            gridTensor = out.new_grid;
-        }}
 
-        // Extract RGB (sigmoided) and hidden (tanh) for next step
-        const raw = gridTensor.data;
-        currentNcaFrame = new Float32Array(imgSize);
-        currentHidden = new Float32Array(hiddenSize);
-        for (let i = 0; i < imgSize; i++) {{
-            currentNcaFrame[i] = sigmoid(raw[i]);
-        }}
-        for (let i = 0; i < hiddenSize; i++) {{
-            currentHidden[i] = Math.tanh(raw[imgSize + i]);
+            // Squash after each step (matches training)
+            const raw = out.new_grid.data;
+            for (let i = 0; i < imgSize; i++) {{
+                currentNcaFrame[i] = sigmoid(raw[i]);
+            }}
+            for (let i = 0; i < hiddenSize; i++) {{
+                currentHidden[i] = Math.tanh(raw[imgSize + i]);
+            }}
         }}
     }}
 
