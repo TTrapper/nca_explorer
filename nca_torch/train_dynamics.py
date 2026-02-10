@@ -238,27 +238,27 @@ class DynamicsTrainer:
             layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
 
             # Initialize grid from FirstFrameDecoder (full grid: RGB + hidden channels)
-            # Hidden channels are initialized from z, allowing gradients to flow to encoder
             grid = self.model.first_frame_decoder(z)  # [B, grid_channels, H, W]
 
-            for step in range(M):
-                # Run num_steps NCA iterations
-                for _ in range(self.args.num_steps):
-                    grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
+            # Total NCA steps = num_steps * M (target advances every num_steps)
+            total_nca_steps = self.args.num_steps * M
+            target_idx = 0
+
+            for step in range(total_nca_steps):
+                # Run one NCA step
+                grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
 
                 # Extract RGB via sigmoid for loss
                 pred = torch.sigmoid(grid[:, :C])
 
-                # Loss against ground truth target
-                target = future_targets[:, step]  # [B, C, H, W]
+                # Loss against current target
+                target = future_targets[:, target_idx]  # [B, C, H, W]
                 _, recon_loss, kl_loss = vae_loss(
                     pred, target, mu, logvar, self.args.kl_weight
                 )
 
-                # Build loss: weighted reconstruction + KL + perceptual
                 loss = self.args.recon_weight * recon_loss + self.args.kl_weight * kl_loss
 
-                # Perceptual loss (optional) - pass context for 3D temporal features
                 perceptual_loss_val = 0.0
                 if self.perceptual_loss is not None:
                     perceptual_loss_val = self.perceptual_loss(pred, target, context=context_window)
@@ -270,13 +270,14 @@ class DynamicsTrainer:
                 total_step_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
 
                 # Squash RGB (sigmoid) and hidden (tanh) to prevent explosion
-                if step < M - 1:
-                    rgb_squashed = torch.sigmoid(grid[:, :C])
-                    hidden_squashed = torch.tanh(grid[:, C:])
-                    grid = torch.cat([rgb_squashed, hidden_squashed], dim=1)
+                grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
 
-            # Average loss over steps and backprop
-            avg_loss = total_step_loss / M
+                # Advance target every num_steps
+                if (step + 1) % self.args.num_steps == 0 and target_idx < M - 1:
+                    target_idx += 1
+
+            # Average loss over all NCA steps
+            avg_loss = total_step_loss / total_nca_steps
 
             avg_loss.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 1.0)
@@ -331,17 +332,16 @@ class DynamicsTrainer:
             # Initialize grid from FirstFrameDecoder (full grid: RGB + hidden channels)
             grid = self.model.first_frame_decoder(z)  # [B, grid_channels, H, W]
 
+            # Total NCA steps = num_steps * M (target advances every num_steps)
+            total_nca_steps = self.args.num_steps * M
+            target_idx = 0
             batch_loss = 0
-            for step in range(M):
-                # Run num_steps NCA iterations
-                for _ in range(self.args.num_steps):
-                    grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
 
-                # Extract RGB via sigmoid for loss
+            for step in range(total_nca_steps):
+                grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
+
                 pred = torch.sigmoid(grid[:, :C])
-
-                # Loss against ground truth target
-                target = future_targets[:, step]
+                target = future_targets[:, target_idx]
                 _, recon_loss, kl_loss = vae_loss(
                     pred, target, mu, logvar, self.args.kl_weight
                 )
@@ -355,12 +355,15 @@ class DynamicsTrainer:
 
                 batch_loss += loss.item()
 
-                # Squash RGB (sigmoid) and hidden (tanh) to prevent explosion
-                if step < M - 1:
-                    grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
+                # Squash RGB (sigmoid) and hidden (tanh)
+                grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
 
-            total_loss += batch_loss / M
-            total_recon += batch_loss / M  # Simplified
+                # Advance target every num_steps
+                if (step + 1) % self.args.num_steps == 0 and target_idx < M - 1:
+                    target_idx += 1
+
+            total_loss += batch_loss / total_nca_steps
+            total_recon += batch_loss / total_nca_steps
             total_kl += kl_loss.item()
             total_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
             num_batches += 1
@@ -474,17 +477,17 @@ class DynamicsTrainer:
 
         frames = [grid[:, :C].clone()]  # First frame is RGB portion
 
-        # Run NCA for subsequent frames (dynamics) with evolving hidden channels
-        for _ in range(rollout_steps):
-            for _ in range(self.args.num_steps):
-                grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
+        # Run NCA steps, capturing frame every num_steps
+        total_nca_steps = rollout_steps * self.args.num_steps
+        for step in range(total_nca_steps):
+            grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
 
-            # Extract RGB via sigmoid
-            current_frame = torch.sigmoid(grid[:, :C])
-            frames.append(current_frame.clone())
-
-            # Squash RGB (sigmoid) and hidden (tanh) to prevent explosion
+            # Squash RGB (sigmoid) and hidden (tanh)
             grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
+
+            # Capture frame every num_steps
+            if (step + 1) % self.args.num_steps == 0:
+                frames.append(grid[:, :C].clone())  # Already sigmoided
 
         # Plot: ground truth on top, predictions on bottom
         n_frames = min(16, len(frames))
