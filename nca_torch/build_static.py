@@ -246,6 +246,23 @@ class DecodeLatentExport(nn.Module):
         return first_frame, layer1_w, layer1_b, layer2_w, layer2_b
 
 
+class EncodeExport(nn.Module):
+    """Wrapper for encoder ONNX export."""
+
+    def __init__(self, model: NCAAutoencoder):
+        super().__init__()
+        self.encoder = model.encoder
+        self.use_vae = model.use_vae
+
+    def forward(self, x):
+        # x: [1, in_channels * context_frames, H, W]
+        if self.use_vae:
+            z, mu, logvar = self.encoder(x)
+            return mu  # Deterministic inference
+        else:
+            return self.encoder(x)
+
+
 class NCAStepExport(nn.Module):
     """Single NCA step with ONNX-compatible manual circular padding."""
 
@@ -442,8 +459,16 @@ def encode_sequences(model, dataset, cfg, device, max_sequences: int = 0):
     return latents
 
 
-def export_onnx_models(model, cfg, device, output_dir: Path):
-    """Export ONNX wrapper models."""
+def export_onnx_models(model, cfg, device, output_dir: Path, realtime_model=None):
+    """Export ONNX wrapper models.
+
+    Args:
+        model: Main model (encoder used for all, decoder used for piano demo)
+        cfg: Model config dict
+        device: torch device
+        output_dir: Output directory
+        realtime_model: Optional second model whose decoder is used for realtime audio
+    """
     onnx_dir = output_dir / "onnx"
     onnx_dir.mkdir(parents=True, exist_ok=True)
 
@@ -451,7 +476,7 @@ def export_onnx_models(model, cfg, device, output_dir: Path):
     grid_channels = cfg["grid_channels"]
     H, W = cfg["grid_size"]
 
-    # --- DecodeLatent ---
+    # --- DecodeLatent (main model - for piano demo) ---
     decode_wrapper = DecodeLatentExport(model)
     decode_wrapper.eval()
     dummy_z = torch.randn(1, latent_dim, device=device)
@@ -467,6 +492,23 @@ def export_onnx_models(model, cfg, device, output_dir: Path):
         opset_version=17,
     )
     print(f"Exported {decode_path} ({decode_path.stat().st_size / 1024:.0f} KB)")
+
+    # --- Realtime DecodeLatent (optional second model - for realtime audio) ---
+    if realtime_model is not None:
+        rt_decode_wrapper = DecodeLatentExport(realtime_model)
+        rt_decode_wrapper.eval()
+
+        rt_decode_path = onnx_dir / "rt_decode_latent.onnx"
+        torch.onnx.export(
+            rt_decode_wrapper,
+            (dummy_z,),
+            str(rt_decode_path),
+            input_names=["z"],
+            output_names=["first_frame", "layer1_w", "layer1_b", "layer2_w", "layer2_b"],
+            dynamic_axes=None,
+            opset_version=17,
+        )
+        print(f"Exported {rt_decode_path} ({rt_decode_path.stat().st_size / 1024:.0f} KB)")
 
     # --- NCAStep ---
     nca_wrapper = NCAStepExport()
@@ -489,8 +531,28 @@ def export_onnx_models(model, cfg, device, output_dir: Path):
     )
     print(f"Exported {nca_path} ({nca_path.stat().st_size / 1024:.0f} KB)")
 
+    # --- Encoder ---
+    encode_wrapper = EncodeExport(model)
+    encode_wrapper.eval()
+    in_ch = cfg["in_channels"] * cfg["context_frames"]
+    dummy_spec = torch.randn(1, in_ch, H, W, device=device)
 
-def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, max_sequences: int = 0):
+    encode_path = onnx_dir / "encode.onnx"
+    torch.onnx.export(
+        encode_wrapper,
+        (dummy_spec,),
+        str(encode_path),
+        input_names=["spectrogram"],
+        output_names=["z"],
+        dynamic_axes=None,
+        opset_version=17,
+    )
+    print(f"Exported {encode_path} ({encode_path.stat().st_size / 1024:.0f} KB)")
+
+    return realtime_model is not None  # Return whether realtime decoder was exported
+
+
+def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, max_sequences: int = 0, has_rt_decoder: bool = False):
     """Write sequence .bin files and manifest.json."""
     data_dir = output_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -525,6 +587,9 @@ def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, 
         "num_steps": cfg["num_steps"],
         "latent_dim": cfg["latent_dim"],
         "grid_channels": cfg["grid_channels"],
+        "encoder_input_channels": cfg["in_channels"] * cfg["context_frames"],
+        "encoder_available": True,
+        "rt_decoder_available": has_rt_decoder,
         "sequences": sequences_meta,
         "instrument_embeddings": instrument_embeddings,
     }
@@ -535,7 +600,7 @@ def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, 
     print(f"Wrote manifest.json ({manifest_path.stat().st_size / 1024:.0f} KB)")
 
 
-def export_data_github_pages(instrument_embeddings, cfg, output_dir: Path):
+def export_data_github_pages(instrument_embeddings, cfg, output_dir: Path, has_rt_decoder: bool = False):
     """Write minimal manifest.json for GitHub Pages (no sequences)."""
     data_dir = output_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -552,6 +617,9 @@ def export_data_github_pages(instrument_embeddings, cfg, output_dir: Path):
         "num_steps": cfg["num_steps"],
         "latent_dim": cfg["latent_dim"],
         "grid_channels": cfg["grid_channels"],
+        "encoder_input_channels": cfg["in_channels"] * cfg["context_frames"],
+        "encoder_available": True,
+        "rt_decoder_available": has_rt_decoder,
         "sequences": [],
         "instrument_embeddings": instrument_embeddings,
     }
@@ -905,6 +973,79 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             color: #aaa;
             font-style: italic;
         }}
+
+        /* Real-time audio section */
+        .rt-section {{
+            margin-top: 60px;
+            padding: 30px;
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border-radius: 15px;
+            border: 1px solid #4fc3f7;
+        }}
+        .rt-section h2 {{
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            font-size: 1.8em;
+        }}
+        .rt-section .rt-subtitle {{
+            color: #888;
+            margin-bottom: 25px;
+        }}
+        .rt-container {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }}
+        .rt-displays {{
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }}
+        .rt-display {{
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }}
+        .rt-display canvas {{
+            border: 2px solid #4fc3f7;
+            border-radius: 8px;
+            background: #000;
+            image-rendering: pixelated;
+        }}
+        .rt-display .label {{
+            margin-top: 8px;
+            color: #4fc3f7;
+            font-size: 0.9em;
+        }}
+        .rt-controls {{
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }}
+        .rt-controls button {{
+            background: #4fc3f7;
+            color: #1a1a2e;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1em;
+            transition: all 0.2s;
+        }}
+        .rt-controls button:hover {{ background: #81d4fa; }}
+        .rt-controls button:disabled {{ background: #555; cursor: not-allowed; }}
+        .rt-controls button.active {{ background: #f44336; }}
+        #rtMicStatus {{
+            color: #4caf50;
+            font-size: 0.9em;
+            min-width: 80px;
+        }}
+        #rtMicStatus.error {{ color: #f44336; }}
     </style>
 </head>
 <body>
@@ -964,6 +1105,30 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         <div class="article">
             <hr>
             {article_html}
+        </div>
+
+        <div class="rt-section" id="realtimeAudioSection">
+            <h2>Real-Time Audio</h2>
+            <p class="rt-subtitle">Drive NCA dynamics with your microphone. Audio updates the NCA rules while the grid continues evolving.</p>
+
+            <div class="rt-container">
+                <div class="rt-displays">
+                    <div class="rt-display">
+                        <canvas id="rtSpecCanvas" width="256" height="256"></canvas>
+                        <div class="label">Live Spectrogram</div>
+                    </div>
+                    <div class="rt-display">
+                        <canvas id="rtNcaCanvas" width="256" height="256"></canvas>
+                        <div class="label">NCA Output</div>
+                    </div>
+                </div>
+
+                <div class="rt-controls">
+                    <button id="rtEnableMicBtn">Enable Microphone</button>
+                    <button id="rtResetGridBtn" disabled>Reset Grid</button>
+                    <span id="rtMicStatus"></span>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -1828,6 +1993,393 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
     init();
     }})();
+
+    // =========================================================================
+    // Real-Time Audio Section (separate IIFE to avoid variable conflicts)
+    // =========================================================================
+    (function() {{
+    "use strict";
+
+    // Wait for manifest to load before initializing
+    let rtManifest = null;
+    let rtWidth = 0, rtHeight = 0, rtChannels = 0;
+    let rtLatentDim = 0, rtGridChannels = 0, rtNumSteps = 0;
+    let rtEncoderInputChannels = 0;
+
+    // ONNX sessions
+    let rtEncodeSession = null;
+    let rtDecodeSession = null;
+    let rtNcaSession = null;
+
+    // Audio state
+    let rtAudioContext = null;
+    let rtAnalyser = null;
+    let rtSpectrogramBuffer = null;
+    const SPEC_SIZE = 32;  // Match grid size
+
+    // NCA state (persistent across encoder updates)
+    let rtGrid = null;           // Full grid [gridChannels * H * W]
+    let rtCachedParams = null;   // NCA weights from decoder
+    let rtNcaFrame = null;       // RGB display buffer
+    let rtHidden = null;         // Hidden channels
+
+    // Timing
+    let rtLastEncoderRun = 0;
+    const ENCODER_THROTTLE_MS = 100;  // ~10fps for encoder
+    let rtRunning = false;
+
+    // Canvas refs
+    const rtSpecCanvas = document.getElementById('rtSpecCanvas');
+    const rtNcaCanvas = document.getElementById('rtNcaCanvas');
+    const rtSpecCtx = rtSpecCanvas ? rtSpecCanvas.getContext('2d') : null;
+    const rtNcaCtx = rtNcaCanvas ? rtNcaCanvas.getContext('2d') : null;
+
+    function sigmoid(x) {{
+        return 1 / (1 + Math.exp(-x));
+    }}
+
+    function randn() {{
+        const u1 = Math.random(), u2 = Math.random();
+        return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }}
+
+    // -----------------------------------------------------------------------
+    // Audio Capture
+    // -----------------------------------------------------------------------
+    async function initMicrophone() {{
+        try {{
+            const stream = await navigator.mediaDevices.getUserMedia({{ audio: true }});
+            rtAudioContext = new AudioContext();
+            const source = rtAudioContext.createMediaStreamSource(stream);
+            rtAnalyser = rtAudioContext.createAnalyser();
+            rtAnalyser.fftSize = 2048;
+            rtAnalyser.smoothingTimeConstant = 0.8;
+            source.connect(rtAnalyser);
+            rtSpectrogramBuffer = new Float32Array(SPEC_SIZE * SPEC_SIZE).fill(0);
+            return true;
+        }} catch (e) {{
+            console.error('Microphone init failed:', e);
+            return false;
+        }}
+    }}
+
+    function computeSpectrogram() {{
+        if (!rtAnalyser) return null;
+
+        const freqData = new Float32Array(rtAnalyser.frequencyBinCount);
+        rtAnalyser.getFloatFrequencyData(freqData);  // dB values
+
+        // Simple mel-scale-ish mapping to SPEC_SIZE bins
+        const melBins = new Float32Array(SPEC_SIZE);
+        for (let i = 0; i < SPEC_SIZE; i++) {{
+            // Mel-scale approximation: lower bins spread more
+            const melIdx = Math.pow(i / SPEC_SIZE, 1.5) * freqData.length * 0.5;
+            const bin = Math.floor(melIdx);
+            // Normalize: getFloatFrequencyData returns dB, typically -100 to 0
+            melBins[i] = Math.max(0, Math.min(1, (freqData[bin] + 100) / 100));
+        }}
+
+        // Shift buffer left (time axis), add new column on right
+        rtSpectrogramBuffer.copyWithin(0, SPEC_SIZE);
+        rtSpectrogramBuffer.set(melBins, (SPEC_SIZE - 1) * SPEC_SIZE);
+
+        // Create image with freq (y) vs time (x), low freq at bottom
+        const img = new Float32Array(SPEC_SIZE * SPEC_SIZE);
+        for (let t = 0; t < SPEC_SIZE; t++) {{
+            for (let f = 0; f < SPEC_SIZE; f++) {{
+                // Flip vertically so low freq at bottom
+                img[(SPEC_SIZE - 1 - f) * SPEC_SIZE + t] = rtSpectrogramBuffer[t * SPEC_SIZE + f];
+            }}
+        }}
+        return img;
+    }}
+
+    // -----------------------------------------------------------------------
+    // Rendering
+    // -----------------------------------------------------------------------
+    function renderSpectrogramCanvas(specImg) {{
+        if (!rtSpecCtx || !specImg) return;
+
+        const displayW = rtSpecCanvas.width;
+        const displayH = rtSpecCanvas.height;
+        const imageData = rtSpecCtx.createImageData(displayW, displayH);
+        const scaleX = displayW / SPEC_SIZE;
+        const scaleY = displayH / SPEC_SIZE;
+
+        for (let y = 0; y < displayH; y++) {{
+            for (let x = 0; x < displayW; x++) {{
+                const srcX = Math.floor(x / scaleX);
+                const srcY = Math.floor(y / scaleY);
+                const srcIdx = srcY * SPEC_SIZE + srcX;
+                const dstIdx = (y * displayW + x) * 4;
+
+                // Viridis-ish colormap
+                const v = specImg[srcIdx];
+                imageData.data[dstIdx]     = Math.floor(v * 100 + (1 - v) * 68);   // R
+                imageData.data[dstIdx + 1] = Math.floor(v * 220 + (1 - v) * 1);    // G
+                imageData.data[dstIdx + 2] = Math.floor(v * 150 + (1 - v) * 84);   // B
+                imageData.data[dstIdx + 3] = 255;
+            }}
+        }}
+        rtSpecCtx.putImageData(imageData, 0, 0);
+    }}
+
+    function renderRtNcaCanvas() {{
+        if (!rtNcaCtx || !rtNcaFrame) return;
+
+        const displayW = rtNcaCanvas.width;
+        const displayH = rtNcaCanvas.height;
+        const imageData = rtNcaCtx.createImageData(displayW, displayH);
+        const scaleX = displayW / rtWidth;
+        const scaleY = displayH / rtHeight;
+
+        for (let y = 0; y < displayH; y++) {{
+            for (let x = 0; x < displayW; x++) {{
+                const srcX = Math.floor(x / scaleX);
+                const srcY = Math.floor(y / scaleY);
+                const dstIdx = (y * displayW + x) * 4;
+
+                for (let c = 0; c < rtChannels; c++) {{
+                    const srcIdx = c * rtHeight * rtWidth + srcY * rtWidth + srcX;
+                    const val = Math.min(255, Math.max(0, Math.round(rtNcaFrame[srcIdx] * 255)));
+                    imageData.data[dstIdx + c] = val;
+                }}
+                if (rtChannels === 1) {{
+                    imageData.data[dstIdx + 1] = imageData.data[dstIdx];
+                    imageData.data[dstIdx + 2] = imageData.data[dstIdx];
+                }}
+                imageData.data[dstIdx + 3] = 255;
+            }}
+        }}
+        rtNcaCtx.putImageData(imageData, 0, 0);
+    }}
+
+    // -----------------------------------------------------------------------
+    // ONNX Inference
+    // -----------------------------------------------------------------------
+    async function rtLoadModels(useRtDecoder) {{
+        rtEncodeSession = await ort.InferenceSession.create('onnx/encode.onnx');
+        // Use separate realtime decoder if available, otherwise fall back to main decoder
+        const decoderPath = useRtDecoder ? 'onnx/rt_decode_latent.onnx' : 'onnx/decode_latent.onnx';
+        rtDecodeSession = await ort.InferenceSession.create(decoderPath);
+        rtNcaSession = await ort.InferenceSession.create('onnx/nca_step.onnx');
+    }}
+
+    async function rtEncodeAndUpdateWeights(specImg) {{
+        // Build input tensor: tile single-channel spec to match encoder input channels
+        const input = new Float32Array(rtEncoderInputChannels * rtHeight * rtWidth);
+        for (let c = 0; c < rtEncoderInputChannels; c++) {{
+            for (let y = 0; y < rtHeight; y++) {{
+                for (let x = 0; x < rtWidth; x++) {{
+                    // Map SPEC_SIZE -> rtWidth/rtHeight
+                    const srcY = Math.floor(y * SPEC_SIZE / rtHeight);
+                    const srcX = Math.floor(x * SPEC_SIZE / rtWidth);
+                    input[c * rtHeight * rtWidth + y * rtWidth + x] = specImg[srcY * SPEC_SIZE + srcX];
+                }}
+            }}
+        }}
+
+        const tensor = new ort.Tensor('float32', input, [1, rtEncoderInputChannels, rtHeight, rtWidth]);
+        const encResult = await rtEncodeSession.run({{ spectrogram: tensor }});
+        const z = encResult.z.data;
+
+        // Decode z -> NCA weights (but NOT grid - grid is preserved)
+        const zTensor = new ort.Tensor('float32', z, [1, rtLatentDim]);
+        const decResult = await rtDecodeSession.run({{ z: zTensor }});
+
+        // Update cached params ONLY (grid state preserved)
+        rtCachedParams = {{
+            layer1_w: decResult.layer1_w,
+            layer1_b: decResult.layer1_b,
+            layer2_w: decResult.layer2_w,
+            layer2_b: decResult.layer2_b,
+        }};
+        // Note: decResult.first_frame is ignored - we don't reset the grid
+    }}
+
+    async function rtStepNca() {{
+        if (!rtCachedParams || !rtGrid) return;
+
+        const gridSize = rtGridChannels * rtHeight * rtWidth;
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = gridSize - imgSize;
+
+        // Build grid from current state
+        const grid = new Float32Array(gridSize);
+        grid.set(rtNcaFrame);
+        grid.set(rtHidden, imgSize);
+
+        // Run one NCA step
+        const gridTensor = new ort.Tensor('float32', grid, [1, rtGridChannels, rtHeight, rtWidth]);
+        const out = await rtNcaSession.run({{
+            grid: gridTensor,
+            layer1_w: rtCachedParams.layer1_w,
+            layer1_b: rtCachedParams.layer1_b,
+            layer2_w: rtCachedParams.layer2_w,
+            layer2_b: rtCachedParams.layer2_b,
+        }});
+
+        // Squash (matches training)
+        const raw = out.new_grid.data;
+        for (let i = 0; i < imgSize; i++) {{
+            rtNcaFrame[i] = sigmoid(raw[i]);
+        }}
+        for (let i = 0; i < hiddenSize; i++) {{
+            rtHidden[i] = Math.tanh(raw[imgSize + i]);
+        }}
+    }}
+
+    async function rtInitGrid() {{
+        // Initialize with random z
+        const z = new Float32Array(rtLatentDim);
+        for (let i = 0; i < rtLatentDim; i++) z[i] = randn() * 0.5;
+
+        const zTensor = new ort.Tensor('float32', z, [1, rtLatentDim]);
+        const result = await rtDecodeSession.run({{ z: zTensor }});
+
+        // Store initial grid state
+        const gridSize = rtGridChannels * rtHeight * rtWidth;
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = gridSize - imgSize;
+
+        rtGrid = new Float32Array(result.first_frame.data);
+        rtCachedParams = {{
+            layer1_w: result.layer1_w,
+            layer1_b: result.layer1_b,
+            layer2_w: result.layer2_w,
+            layer2_b: result.layer2_b,
+        }};
+
+        // Extract display buffers
+        rtNcaFrame = new Float32Array(imgSize);
+        rtHidden = new Float32Array(hiddenSize);
+        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = rtGrid[i];
+        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = rtGrid[imgSize + i];
+
+        // Run initial NCA steps
+        for (let s = 0; s < rtNumSteps; s++) {{
+            await rtStepNca();
+        }}
+    }}
+
+    // -----------------------------------------------------------------------
+    // Main Loop
+    // -----------------------------------------------------------------------
+    async function rtMicrophoneLoop() {{
+        if (!rtRunning || !rtAnalyser) return;
+
+        const specImg = computeSpectrogram();
+        if (specImg) {{
+            renderSpectrogramCanvas(specImg);
+
+            const now = performance.now();
+            if (now - rtLastEncoderRun > ENCODER_THROTTLE_MS) {{
+                await rtEncodeAndUpdateWeights(specImg);
+                rtLastEncoderRun = now;
+            }}
+        }}
+
+        // Run NCA step with current (possibly just-updated) params
+        if (rtCachedParams && rtNcaFrame) {{
+            await rtStepNca();
+        }}
+
+        renderRtNcaCanvas();
+        requestAnimationFrame(rtMicrophoneLoop);
+    }}
+
+    // -----------------------------------------------------------------------
+    // UI Event Handlers
+    // -----------------------------------------------------------------------
+    const rtEnableMicBtn = document.getElementById('rtEnableMicBtn');
+    const rtResetGridBtn = document.getElementById('rtResetGridBtn');
+    const rtMicStatus = document.getElementById('rtMicStatus');
+
+    if (rtEnableMicBtn) {{
+        rtEnableMicBtn.addEventListener('click', async () => {{
+            if (rtRunning) {{
+                // Stop
+                rtRunning = false;
+                if (rtAudioContext) {{
+                    rtAudioContext.close();
+                    rtAudioContext = null;
+                    rtAnalyser = null;
+                }}
+                rtEnableMicBtn.textContent = 'Enable Microphone';
+                rtEnableMicBtn.classList.remove('active');
+                rtMicStatus.textContent = '';
+                rtResetGridBtn.disabled = true;
+                return;
+            }}
+
+            rtEnableMicBtn.disabled = true;
+            rtMicStatus.textContent = 'Loading...';
+
+            try {{
+                // Load manifest if not already loaded
+                if (!rtManifest) {{
+                    const resp = await fetch('data/manifest.json');
+                    rtManifest = await resp.json();
+                    rtWidth = rtManifest.width;
+                    rtHeight = rtManifest.height;
+                    rtChannels = rtManifest.channels;
+                    rtLatentDim = rtManifest.latent_dim;
+                    rtGridChannels = rtManifest.grid_channels;
+                    rtNumSteps = rtManifest.num_steps;
+                    rtEncoderInputChannels = rtManifest.encoder_input_channels || (rtManifest.context_frames * rtChannels);
+                }}
+
+                // Load models if not already loaded
+                if (!rtEncodeSession) {{
+                    rtMicStatus.textContent = 'Loading models...';
+                    const useRtDecoder = rtManifest.rt_decoder_available || false;
+                    await rtLoadModels(useRtDecoder);
+                }}
+
+                // Init microphone
+                rtMicStatus.textContent = 'Requesting mic...';
+                const ok = await initMicrophone();
+                if (!ok) {{
+                    rtMicStatus.textContent = 'Mic access denied';
+                    rtMicStatus.classList.add('error');
+                    rtEnableMicBtn.disabled = false;
+                    return;
+                }}
+
+                // Init grid if not already
+                if (!rtGrid) {{
+                    rtMicStatus.textContent = 'Initializing grid...';
+                    await rtInitGrid();
+                }}
+
+                rtRunning = true;
+                rtEnableMicBtn.textContent = 'Disable Microphone';
+                rtEnableMicBtn.classList.add('active');
+                rtMicStatus.textContent = 'Active';
+                rtMicStatus.classList.remove('error');
+                rtResetGridBtn.disabled = false;
+
+                rtMicrophoneLoop();
+            }} catch (e) {{
+                console.error('RT Audio init error:', e);
+                rtMicStatus.textContent = 'Error: ' + e.message;
+                rtMicStatus.classList.add('error');
+            }}
+
+            rtEnableMicBtn.disabled = false;
+        }});
+    }}
+
+    if (rtResetGridBtn) {{
+        rtResetGridBtn.addEventListener('click', async () => {{
+            if (!rtDecodeSession) return;
+            rtResetGridBtn.disabled = true;
+            await rtInitGrid();
+            rtResetGridBtn.disabled = !rtRunning;
+        }});
+    }}
+
+    }})();
     </script>
 </body>
 </html>"""
@@ -1858,6 +2410,10 @@ def main():
         "--github-pages", action="store_true",
         help="Build for GitHub Pages: free latent mode only, no GIF recording, outputs to repo root"
     )
+    parser.add_argument(
+        "--realtime-checkpoint", type=str, default=None,
+        help="Optional second checkpoint for realtime audio decoder (uses its hypernetwork while main checkpoint provides encoder)"
+    )
     args = parser.parse_args()
 
     # For GitHub Pages, default output to repo root
@@ -1880,6 +2436,17 @@ def main():
     # 1a. Load model (and data if not github-pages mode)
     print("\n[1/8] Loading model...")
     model, cfg, device = load_model(args.checkpoint, args.device)
+
+    # Load optional realtime decoder model
+    realtime_model = None
+    if args.realtime_checkpoint:
+        print(f"  Loading realtime decoder from {args.realtime_checkpoint}...")
+        realtime_model, rt_cfg, _ = load_model(args.realtime_checkpoint, args.device)
+        # Verify compatibility
+        if rt_cfg["latent_dim"] != cfg["latent_dim"]:
+            print(f"  WARNING: Latent dim mismatch ({rt_cfg['latent_dim']} vs {cfg['latent_dim']})")
+        if rt_cfg["grid_channels"] != cfg["grid_channels"]:
+            print(f"  WARNING: Grid channels mismatch ({rt_cfg['grid_channels']} vs {cfg['grid_channels']})")
 
     dataset = None
     latents = []
@@ -1909,16 +2476,16 @@ def main():
 
     # 1d. Export ONNX models
     print("\n[4/8] Exporting ONNX models...")
-    export_onnx_models(model, cfg, device, output_dir)
+    has_rt_decoder = export_onnx_models(model, cfg, device, output_dir, realtime_model)
 
     # 1e. Export data
     if args.github_pages:
         print("\n[5/8] Exporting manifest (GitHub Pages mode, no sequences)...")
-        export_data_github_pages(instrument_embeddings, cfg, output_dir)
+        export_data_github_pages(instrument_embeddings, cfg, output_dir, has_rt_decoder)
     else:
         n = len(latents)
         print(f"\n[5/8] Exporting data ({n} sequences)...")
-        export_data(dataset, latents, instrument_embeddings, cfg, output_dir, args.max_sequences)
+        export_data(dataset, latents, instrument_embeddings, cfg, output_dir, args.max_sequences, has_rt_decoder)
 
     # 1f. Copy static assets (groundtruth GIFs, etc.)
     print("\n[6/8] Copying static assets...")
