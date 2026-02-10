@@ -7,7 +7,7 @@ One NCA step = one simulation time step.
 Key features:
 - Multi-frame context: Encode multiple frames to capture velocity
 - Fixed k=1: Each NCA step produces the next frame
-- Scheduled sampling: Train on model predictions to reduce autoregressive error accumulation
+- Autoregressive: Always uses own predictions for next step
 
 Usage:
     python train_dynamics.py --data ./data/boids/boids_32x32.npy --context-frames 4
@@ -62,16 +62,6 @@ def get_args():
     parser.add_argument("--num-steps", type=int, default=1,
                         help="Number of NCA steps per predicted frame (more = more compute per frame)")
 
-    # Scheduled sampling
-    parser.add_argument("--ss-steps", type=int, default=8,
-                        help="Number of autoregressive steps during scheduled sampling training")
-    parser.add_argument("--ss-start-prob", type=float, default=0.0,
-                        help="Initial probability of using model predictions (0 = always use ground truth)")
-    parser.add_argument("--ss-end-prob", type=float, default=0.5,
-                        help="Final probability of using model predictions")
-    parser.add_argument("--ss-warmup-epochs", type=int, default=10,
-                        help="Epochs to linearly increase scheduled sampling probability")
-
     # Latent noise (helps fill in latent space)
     parser.add_argument("--latent-noise-std", type=float, default=0.0,
                         help="Noise std added to latent z during training (helps fill latent space)")
@@ -103,54 +93,30 @@ class DynamicsTrainer:
         self.save_dir = Path(args.save_dir)
         self.save_dir.mkdir(exist_ok=True)
 
-        # Load dataset with multiple future frames for scheduled sampling
+        # Load dataset to get dimensions and max future frames
         print(f"Loading data from {args.data}...")
         self.context_frames = args.context_frames
-        self.ss_steps = args.ss_steps
+        self.data_path = args.data
 
-        full_dataset = SequenceDataset(
+        # First load to get sequence info
+        temp_dataset = SequenceDataset(
             args.data,
             context_frames=args.context_frames,
-            future_frames=args.ss_steps,  # Get multiple future frames
+            future_frames=1,
         )
-
-        # Limit samples if requested
-        base_dataset = full_dataset  # Keep reference for attributes
-        if args.max_samples and args.max_samples < len(full_dataset):
-            indices = list(range(args.max_samples))
-            full_dataset = torch.utils.data.Subset(full_dataset, indices)
-            print(f"Limited to {args.max_samples} samples")
+        self.max_future_frames = temp_dataset.seq_length - args.context_frames
+        self.num_sequences = temp_dataset.num_sequences
 
         # Infer dimensions from data
-        self.in_channels = base_dataset.channels
-        self.grid_size = (base_dataset.height, base_dataset.width)
-        print(f"Data: {base_dataset.channels} channels, {self.grid_size} resolution")
-        print(f"Context frames: {args.context_frames} (encoder input: {base_dataset.channels * args.context_frames} channels)")
-        print(f"Scheduled sampling steps: {args.ss_steps}")
+        self.in_channels = temp_dataset.channels
+        self.grid_size = (temp_dataset.height, temp_dataset.width)
+        print(f"Data: {temp_dataset.channels} channels, {self.grid_size} resolution")
+        print(f"Context frames: {args.context_frames} (encoder input: {temp_dataset.channels * args.context_frames} channels)")
+        print(f"Max future frames: {self.max_future_frames} (sequence length warmup)")
 
-        # Split train/val
-        val_size = int(len(full_dataset) * args.val_split)
-        train_size = len(full_dataset) - val_size
-        train_dataset, val_dataset = random_split(
-            full_dataset, [train_size, val_size]
-        )
-
-        self.train_loader = DataLoader(
-            train_dataset,
-            batch_size=args.batch_size,
-            shuffle=True,
-            num_workers=args.num_workers,
-            pin_memory=True,
-        )
-        self.val_loader = DataLoader(
-            val_dataset,
-            batch_size=args.batch_size,
-            shuffle=False,
-            num_workers=args.num_workers,
-            pin_memory=True,
-        )
-
-        print(f"Train: {train_size}, Val: {val_size}")
+        # Will be set per epoch
+        self.train_loader = None
+        self.val_loader = None
 
         # Model
         self.model = NCAAutoencoder(
@@ -186,19 +152,45 @@ class DynamicsTrainer:
         self.history = {
             "train_loss": [], "train_recon": [], "train_kl": [], "train_perceptual": [],
             "val_loss": [], "val_recon": [], "val_kl": [], "val_perceptual": [],
-            "ss_prob": [],
         }
 
         # Fixed samples for visualization
         self.fixed_samples = None
 
-    def get_ss_prob(self, epoch: int) -> float:
-        """Get scheduled sampling probability for current epoch."""
-        if epoch <= self.args.ss_warmup_epochs:
-            # Linear warmup from start_prob to end_prob
-            progress = epoch / self.args.ss_warmup_epochs
-            return self.args.ss_start_prob + progress * (self.args.ss_end_prob - self.args.ss_start_prob)
-        return self.args.ss_end_prob
+    def create_dataloaders(self, future_frames: int):
+        """Create train/val dataloaders for a given number of future frames."""
+        dataset = SequenceDataset(
+            self.data_path,
+            context_frames=self.context_frames,
+            future_frames=future_frames,
+        )
+
+        # Limit samples if requested
+        if self.args.max_samples and self.args.max_samples < len(dataset):
+            indices = list(range(self.args.max_samples))
+            dataset = torch.utils.data.Subset(dataset, indices)
+
+        # Split train/val
+        val_size = int(len(dataset) * self.args.val_split)
+        train_size = len(dataset) - val_size
+        train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
+
+        self.train_loader = DataLoader(
+            train_dataset,
+            batch_size=self.args.batch_size,
+            shuffle=True,
+            num_workers=self.args.num_workers,
+            pin_memory=True,
+        )
+        self.val_loader = DataLoader(
+            val_dataset,
+            batch_size=self.args.batch_size,
+            shuffle=False,
+            num_workers=self.args.num_workers,
+            pin_memory=True,
+        )
+
+        return train_size, val_size
 
     def train_epoch(self, epoch: int):
         self.model.train()
@@ -209,12 +201,10 @@ class DynamicsTrainer:
         total_perceptual = 0
         num_batches = 0
 
-        ss_prob = self.get_ss_prob(epoch)
-
         pbar = tqdm(self.train_loader, desc=f"Epoch {epoch}")
         for batch_idx, batch in enumerate(pbar):
             # Dataset returns: (context_stacked, init_frame, future_targets)
-            # future_targets shape: [B, M, C, H, W] where M = ss_steps
+            # future_targets shape: [B, M, C, H, W] where M = future_frames
             context_stacked, init_frame, future_targets = batch
 
             context_stacked = context_stacked.to(self.device)
@@ -244,25 +234,20 @@ class DynamicsTrainer:
             if self.args.latent_noise_std > 0:
                 z = z + torch.randn_like(z) * self.args.latent_noise_std
 
-            # Track current frame for NCA dynamics (steps 1+)
-            current_frame = None
+            # Generate NCA params once
+            layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
+
+            # Initialize grid from FirstFrameDecoder (full grid: RGB + hidden channels)
+            # Hidden channels are initialized from z, allowing gradients to flow to encoder
+            grid = self.model.first_frame_decoder(z)  # [B, grid_channels, H, W]
 
             for step in range(M):
-                # Step 0: FirstFrameDecoder → grid RGB → NCA
-                # Steps 1+: Previous frame → grid RGB → NCA
-                if step == 0:
-                    pred = self.model.decode(
-                        z,
-                        num_steps=self.args.num_steps,
-                        init_mode="first_frame",  # Uses FirstFrameDecoder to init grid RGB
-                    )
-                else:
-                    pred = self.model.decode(
-                        z,
-                        num_steps=self.args.num_steps,
-                        init_mode="image",
-                        init_images=current_frame,
-                    )
+                # Run num_steps NCA iterations
+                for _ in range(self.args.num_steps):
+                    grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
+
+                # Extract RGB via sigmoid for loss
+                pred = torch.sigmoid(grid[:, :C])
 
                 # Loss against ground truth target
                 target = future_targets[:, step]  # [B, C, H, W]
@@ -284,13 +269,11 @@ class DynamicsTrainer:
                 total_step_kl += kl_loss.item()
                 total_step_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
 
-                # Use own prediction for next step (ss_prob=1.0 means always)
+                # Squash RGB (sigmoid) and hidden (tanh) to prevent explosion
                 if step < M - 1:
-                    use_prediction = torch.rand(1).item() < ss_prob
-                    if use_prediction:
-                        current_frame = pred.detach()
-                    else:
-                        current_frame = target
+                    rgb_squashed = torch.sigmoid(grid[:, :C])
+                    hidden_squashed = torch.tanh(grid[:, C:])
+                    grid = torch.cat([rgb_squashed, hidden_squashed], dim=1)
 
             # Average loss over steps and backprop
             avg_loss = total_step_loss / M
@@ -306,11 +289,7 @@ class DynamicsTrainer:
             num_batches += 1
 
             if batch_idx % self.args.log_interval == 0:
-                pbar.set_postfix({
-                    "loss": f"{avg_loss.item():.4f}",
-                    "recon": f"{total_step_recon / M:.4f}",
-                    "ss": f"{ss_prob:.2f}",
-                })
+                pbar.set_postfix({"loss": f"{avg_loss.item():.4f}"})
 
         return (
             total_loss / num_batches,
@@ -339,42 +318,55 @@ class DynamicsTrainer:
             C = self.in_channels
             N = self.context_frames
             H, W = self.grid_size
+            M = future_targets.shape[1]
+
+            context_window = context_stacked.view(B, N, C, H, W)
 
             # Encode once from ground truth context (matches training)
             z, mu, logvar = self.model.encode(context_stacked)
 
-            # First step: FirstFrameDecoder → grid RGB → NCA
-            pred = self.model.decode(
-                z,
-                num_steps=self.args.num_steps,
-                init_mode="first_frame",
-            )
+            # Generate NCA params once
+            layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
 
-            # Loss against first future frame
-            target = future_targets[:, 0]
-            _, recon_loss, kl_loss = vae_loss(
-                pred, target, mu, logvar, self.args.kl_weight
-            )
+            # Initialize grid from FirstFrameDecoder (full grid: RGB + hidden channels)
+            grid = self.model.first_frame_decoder(z)  # [B, grid_channels, H, W]
 
-            # Build loss: weighted reconstruction + KL + perceptual
-            loss = self.args.recon_weight * recon_loss + self.args.kl_weight * kl_loss
+            batch_loss = 0
+            for step in range(M):
+                # Run num_steps NCA iterations
+                for _ in range(self.args.num_steps):
+                    grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
 
-            # Perceptual loss (optional) - pass context for 3D temporal features
-            perceptual_loss_val = 0.0
-            if self.perceptual_loss is not None:
-                # Reshape context_stacked to [B, N, C, H, W] for perceptual loss
-                context_window = context_stacked.view(B, N, C, H, W)
-                perceptual_loss_val = self.perceptual_loss(pred, target, context=context_window)
-                loss = loss + self.args.perceptual_weight * perceptual_loss_val
+                # Extract RGB via sigmoid for loss
+                pred = torch.sigmoid(grid[:, :C])
 
-            total_loss += loss.item()
-            total_recon += recon_loss.item()
+                # Loss against ground truth target
+                target = future_targets[:, step]
+                _, recon_loss, kl_loss = vae_loss(
+                    pred, target, mu, logvar, self.args.kl_weight
+                )
+
+                loss = self.args.recon_weight * recon_loss + self.args.kl_weight * kl_loss
+
+                perceptual_loss_val = 0.0
+                if self.perceptual_loss is not None:
+                    perceptual_loss_val = self.perceptual_loss(pred, target, context=context_window)
+                    loss = loss + self.args.perceptual_weight * perceptual_loss_val
+
+                batch_loss += loss.item()
+
+                # Squash RGB (sigmoid) and hidden (tanh) to prevent explosion
+                if step < M - 1:
+                    grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
+
+            total_loss += batch_loss / M
+            total_recon += batch_loss / M  # Simplified
             total_kl += kl_loss.item()
             total_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
             num_batches += 1
 
-            # Store fixed samples for visualization
-            if self.fixed_samples is None:
+            # Store fixed samples for visualization (update each epoch as sequence grows)
+            if self.fixed_samples is None or future_targets.shape[1] > self.fixed_samples["future_targets"].shape[1]:
                 self.fixed_samples = {
                     "context_stacked": context_stacked[:8].clone(),
                     "init_frame": init_frame[:8].clone(),
@@ -468,6 +460,8 @@ class DynamicsTrainer:
         future_targets = self.fixed_samples["future_targets"][0:1].clone()
 
         rollout_steps = 32
+        C = self.in_channels
+        H, W = self.grid_size
 
         # Encode ONCE from initial context
         z, _, _ = self.model.encode(context_stacked)
@@ -475,29 +469,22 @@ class DynamicsTrainer:
         # Generate NCA parameters for dynamics
         layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
 
-        # First frame: FirstFrameDecoder → NCA
-        first_frame = self.model.decode(
-            z,
-            num_steps=self.args.num_steps,
-            init_mode="first_frame",
-        )
-        frames = [first_frame.clone()]
+        # Initialize grid from FirstFrameDecoder (full grid: RGB + hidden channels)
+        grid = self.model.first_frame_decoder(z)  # [1, grid_channels, H, W]
 
-        # Run NCA for subsequent frames (dynamics)
-        current_frame = first_frame
+        frames = [grid[:, :C].clone()]  # First frame is RGB portion
+
+        # Run NCA for subsequent frames (dynamics) with evolving hidden channels
         for _ in range(rollout_steps):
-            # Init grid from previous frame, run NCA
-            grid = self.model.decoder.init_grid(
-                batch_size=1,
-                grid_size=self.grid_size,
-                device=self.device,
-                init_mode="image",
-                init_images=current_frame,
-            )
             for _ in range(self.args.num_steps):
                 grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
-            current_frame = torch.sigmoid(grid[:, :self.in_channels])
+
+            # Extract RGB via sigmoid
+            current_frame = torch.sigmoid(grid[:, :C])
             frames.append(current_frame.clone())
+
+            # Squash RGB (sigmoid) and hidden (tanh) to prevent explosion
+            grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
 
         # Plot: ground truth on top, predictions on bottom
         n_frames = min(16, len(frames))
@@ -565,9 +552,7 @@ class DynamicsTrainer:
         print(f"VAE mode: {not self.args.no_vae}")
         print(f"Context frames: {self.context_frames}")
         print(f"NCA steps per frame: {self.args.num_steps}")
-        print(f"Scheduled sampling: {self.args.ss_steps} steps, "
-              f"prob {self.args.ss_start_prob} -> {self.args.ss_end_prob} "
-              f"over {self.args.ss_warmup_epochs} epochs")
+        print(f"Max future frames: {self.max_future_frames} (sequence warmup: 1 → max)")
         print(f"First frame: FirstFrameDecoder, dynamics: NCA ({self.args.num_steps} steps)")
         print(f"Loss weights: recon={self.args.recon_weight}, kl={self.args.kl_weight}", end="")
         if self.perceptual_loss is not None:
@@ -578,7 +563,11 @@ class DynamicsTrainer:
         best_loss = float("inf")
 
         for epoch in range(1, self.args.epochs + 1):
-            ss_prob = self.get_ss_prob(epoch)
+            # Sequence length warmup: epoch 1 = 1 future frame, epoch 2 = 2, etc.
+            future_frames = min(epoch, self.max_future_frames)
+            train_size, val_size = self.create_dataloaders(future_frames)
+            print(f"\nEpoch {epoch}: future_frames={future_frames}, samples={train_size}")
+
             train_loss, train_recon, train_kl, train_perceptual = self.train_epoch(epoch)
             val_loss, val_recon, val_kl, val_perceptual = self.evaluate()
 
@@ -592,13 +581,11 @@ class DynamicsTrainer:
             self.history["val_recon"].append(val_recon)
             self.history["val_kl"].append(val_kl)
             self.history["val_perceptual"].append(val_perceptual)
-            self.history["ss_prob"].append(ss_prob)
 
-            # Include perceptual in log if active
             if self.perceptual_loss is not None:
-                print(f"Epoch {epoch}: train={train_loss:.4f} (perc={train_perceptual:.4f}), val={val_loss:.4f}, ss_prob={ss_prob:.2f}")
+                print(f"Epoch {epoch}: train={train_loss:.4f} (perc={train_perceptual:.4f}), val={val_loss:.4f}")
             else:
-                print(f"Epoch {epoch}: train={train_loss:.4f}, val={val_loss:.4f}, ss_prob={ss_prob:.2f}")
+                print(f"Epoch {epoch}: train={train_loss:.4f}, val={val_loss:.4f}")
 
             if val_loss < best_loss:
                 best_loss = val_loss

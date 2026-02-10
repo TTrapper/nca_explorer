@@ -340,25 +340,29 @@ class HyperNetworkDecoder(nn.Module):
 
 class FirstFrameDecoder(nn.Module):
     """
-    Simple CNN decoder for generating the first frame directly from latent.
+    CNN decoder for generating the initial grid (RGB + hidden channels) from latent.
 
     Used in dynamics training where:
-    - Step 0: FirstFrameDecoder(z) → frame_0 (direct decode, no noise)
-    - Steps 1+: NCA(frame_n, z) → frame_{n+1} (dynamics refinement)
+    - Step 0: FirstFrameDecoder(z) → grid_0 (full grid: RGB sigmoided, hidden channels as memory)
+    - Steps 1+: NCA(grid_n) → grid_{n+1} (dynamics with frozen hidden channels)
 
-    This separates "generate from latent" from "evolve dynamics".
+    The hidden channels serve as frozen read-only memory of z that the NCA can
+    read from but never modifies. This allows gradients to flow from the NCA
+    output back through the hidden channels to the encoder.
     """
 
     def __init__(
         self,
         latent_dim: int = 64,
         out_channels: int = 3,
+        grid_channels: int = 16,
         hidden_dims: list[int] = [128, 64, 32],
         grid_size: tuple[int, int] = (32, 32),
     ):
         super().__init__()
         self.latent_dim = latent_dim
-        self.out_channels = out_channels
+        self.out_channels = out_channels  # RGB channels
+        self.grid_channels = grid_channels  # Total grid channels (RGB + hidden)
         self.grid_size = grid_size
 
         # Initial projection: latent → spatial feature map
@@ -378,24 +382,25 @@ class FirstFrameDecoder(nn.Module):
             ])
             prev_channels = h_dim
 
-        # Final layer to output channels
+        # Final layer outputs full grid_channels (no activation - applied separately)
         layers.append(
-            nn.ConvTranspose2d(prev_channels, out_channels, kernel_size=4, stride=2, padding=1)
+            nn.ConvTranspose2d(prev_channels, grid_channels, kernel_size=4, stride=2, padding=1)
         )
-        layers.append(nn.Sigmoid())
 
         self.decoder = nn.Sequential(*layers)
 
     def forward(self, z: torch.Tensor, grid_size: tuple[int, int] | None = None) -> torch.Tensor:
         """
-        Decode latent to first frame.
+        Decode latent to initial grid (RGB + frozen hidden channels).
 
         Args:
             z: Latent embeddings [B, latent_dim]
             grid_size: Optional target size (will resize if different from native)
 
         Returns:
-            frame: Generated image [B, out_channels, H, W]
+            grid: Full grid [B, grid_channels, H, W]
+                  - First out_channels: sigmoid (RGB in [0,1])
+                  - Remaining channels: tanh * 0.1 (hidden memory, small values)
         """
         if grid_size is None:
             grid_size = self.grid_size
@@ -413,7 +418,11 @@ class FirstFrameDecoder(nn.Module):
         if out.shape[2:] != grid_size:
             out = F.interpolate(out, size=grid_size, mode='bilinear', align_corners=False)
 
-        return out
+        # Apply activations: sigmoid for RGB, tanh * 0.1 for hidden
+        rgb = torch.sigmoid(out[:, :self.out_channels])
+        hidden = torch.tanh(out[:, self.out_channels:]) * 0.1
+
+        return torch.cat([rgb, hidden], dim=1)
 
 
 class NCAAutoencoder(nn.Module):
@@ -468,10 +477,11 @@ class NCAAutoencoder(nn.Module):
             out_channels=in_channels,  # Output single frame
         )
 
-        # First frame decoder (direct CNN decode, no NCA)
+        # First frame decoder (generates full grid: RGB + hidden channels)
         self.first_frame_decoder = FirstFrameDecoder(
             latent_dim=latent_dim,
             out_channels=in_channels,
+            grid_channels=grid_channels,
             grid_size=grid_size,
         )
 
