@@ -1148,10 +1148,40 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             layer2_b: results.layer2_b,
         }};
 
-        // first_frame is [1, C, H, W] already sigmoided
+        // first_frame is [1, C, H, W] already sigmoided from FirstFrameDecoder
         const ff = results.first_frame.data;
-        currentNcaFrame = new Float32Array(ff.length);
-        currentNcaFrame.set(ff);
+
+        // Build grid: first_frame as RGB, noise in hidden channels
+        const gridSize = gridChannels * height * width;
+        const imgSize = channels * height * width;
+        const grid = new Float32Array(gridSize);
+
+        // RGB channels from first_frame
+        grid.set(ff);
+        // Hidden channels: Gaussian noise * 0.1
+        for (let i = imgSize; i < gridSize; i++) {{
+            grid[i] = randn() * 0.1;
+        }}
+
+        // Run NCA steps on top of FirstFrameDecoder output
+        let gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
+        for (let s = 0; s < numSteps; s++) {{
+            const out = await ncaStepSession.run({{
+                grid: gridTensor,
+                layer1_w: cachedParams.layer1_w,
+                layer1_b: cachedParams.layer1_b,
+                layer2_w: cachedParams.layer2_w,
+                layer2_b: cachedParams.layer2_b,
+            }});
+            gridTensor = out.new_grid;
+        }}
+
+        // Sigmoid on first C channels to get output
+        const raw = gridTensor.data;
+        currentNcaFrame = new Float32Array(imgSize);
+        for (let i = 0; i < imgSize; i++) {{
+            currentNcaFrame[i] = sigmoid(raw[i]);
+        }}
     }}
 
     async function stepNca() {{

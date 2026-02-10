@@ -248,10 +248,14 @@ class DynamicsTrainer:
             current_frame = None
 
             for step in range(M):
-                # Step 0: FirstFrameDecoder (direct CNN decode)
-                # Steps 1+: NCA dynamics (refine previous frame)
+                # Step 0: FirstFrameDecoder → grid RGB → NCA
+                # Steps 1+: Previous frame → grid RGB → NCA
                 if step == 0:
-                    pred = self.model.decode_first_frame(z)
+                    pred = self.model.decode(
+                        z,
+                        num_steps=self.args.num_steps,
+                        init_mode="first_frame",  # Uses FirstFrameDecoder to init grid RGB
+                    )
                 else:
                     pred = self.model.decode(
                         z,
@@ -339,8 +343,12 @@ class DynamicsTrainer:
             # Encode once from ground truth context (matches training)
             z, mu, logvar = self.model.encode(context_stacked)
 
-            # First step uses FirstFrameDecoder
-            pred = self.model.decode_first_frame(z)
+            # First step: FirstFrameDecoder → grid RGB → NCA
+            pred = self.model.decode(
+                z,
+                num_steps=self.args.num_steps,
+                init_mode="first_frame",
+            )
 
             # Loss against first future frame
             target = future_targets[:, 0]
@@ -422,8 +430,12 @@ class DynamicsTrainer:
             if col == 0:
                 axes[1, col].set_ylabel("Target (t+1)", fontsize=10)
 
-            # Row 2: Prediction (t+1) using FirstFrameDecoder
-            pred = self.model.decode_first_frame(z[col:col+1])
+            # Row 2: Prediction (t+1) using FirstFrameDecoder → NCA
+            pred = self.model.decode(
+                z[col:col+1],
+                num_steps=self.args.num_steps,
+                init_mode="first_frame",
+            )
             img = pred[0].permute(1, 2, 0).cpu().numpy()
             if img.shape[-1] == 1:
                 img = img.squeeze(-1)
@@ -463,8 +475,12 @@ class DynamicsTrainer:
         # Generate NCA parameters for dynamics
         layer1_w, layer1_b, layer2_w, layer2_b = self.model.decoder.generate_params(z)
 
-        # First frame from FirstFrameDecoder
-        first_frame = self.model.decode_first_frame(z)
+        # First frame: FirstFrameDecoder → NCA
+        first_frame = self.model.decode(
+            z,
+            num_steps=self.args.num_steps,
+            init_mode="first_frame",
+        )
         frames = [first_frame.clone()]
 
         # Run NCA for subsequent frames (dynamics)

@@ -494,9 +494,21 @@ class NCAAutoencoder(nn.Module):
         step_noise_std: float = 0.0,
         grid_size: tuple[int, int] | None = None,
     ) -> torch.Tensor:
-        """Decode latent to images via NCA (for dynamics/refinement)."""
+        """Decode latent to images via NCA (for dynamics/refinement).
+
+        init_mode options:
+            - "first_frame": Use FirstFrameDecoder output as initial RGB
+            - "image": Use init_images as initial RGB
+            - "learned", "noise", "zeros": Other grid init modes
+        """
         if grid_size is None:
             grid_size = self.grid_size
+
+        # Special mode: use FirstFrameDecoder to initialize grid RGB
+        if init_mode == "first_frame":
+            init_images = self.first_frame_decoder(z, grid_size=grid_size)
+            init_mode = "image"
+
         return self.decoder(
             z,
             grid_size=grid_size,
