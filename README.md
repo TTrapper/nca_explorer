@@ -1,6 +1,6 @@
 # Neural Cellular Automata
 
-The demo above *generates* a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint, and facilitating the exploratin of an embeddings space of NCAs through music.
+The demo above *generates* a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint, and facilitates the exploration of an embeddings space of NCAs through music.
 
 
 ## How to Play
@@ -13,7 +13,7 @@ The demo above *generates* a unique Neural Cellular Automaton for each sound you
 
 ## Gallery
 
-Here are some examples of intersting stable patters you might find the in the space of Neuromusical Cellular Automata. Set the **Perturbation** level high or use to the **Random Latent** button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!
+Here are some examples of beautiful self-stabilizing patterns found in the space of Neuromusical Cellular Automata. Set the **Perturbation** level high or use to the **Random Latent** button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!
 
 | | | |
 |:---:|:---:|:---:|
@@ -24,7 +24,7 @@ Here are some examples of intersting stable patters you might find the in the sp
 
 ### Random NCAs
 
-In contrast to the above NCA's sampled from a learned latent space (so that we are navigating a particularly interesting and beautiful region of NCA parameter space), most of NCA space is more boring and tends to collapse to blank or static patterns:
+In contrast to the above NCAs sampled from a learned latent space (so that we are navigating a particularly interesting and beautiful region of NCA parameter space), most of NCA space is more boring and tends to collapse to blank or static patterns:
 
 | | | |
 |:---:|:---:|:---:|
@@ -34,24 +34,25 @@ In contrast to the above NCA's sampled from a learned latent space (so that we a
 
 ## Why This Project
 
-I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but predicatbly most setups were duds.
+I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but it turns out to be pretty difficult to find anything interesting by randomly navigating parameter space!
 
 This got me thinking about the embeddings space of NCA parameters, and how we could explore it. To get a smoother and hopefully more interesting embedding space, I decided to train a neural network to *generate* NCA parameters from a conditioned latent space.
 
-In this way, I've ended up with a neural network that generates neural networks from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the embedding space, which is very fun.
+In this way, I've ended up with a neural network (a hypernetwork) that generates neural networks (NCAs) from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the embedding space, which is very fun.
 
 ## Cellular Automata
 
 Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.
 
-Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood and the 1 center cell's new state ,which gives us 2^10 (1024) entries per rule. Each entry maps the 9-cell states at time *t* to the center cell's state at time *t+1*. The rule is then convolved over the entire grid to get the new state at each time step.
+Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules (there are 9 cells in a neighborhood + the center cell's new state, which gives us 2^10 (1024) entries per rule). Each entry maps the 9-cell states at time *t* to the center cell's state at time *t+1*.
 
 ![Rainbow Gliders|512x512](assets/rainbow_gliders.gif)
 
 **Neural Cellular Automata (NCA)** replace the discrete update rules of CAs with a small neural network, allowing the system to learn its own dynamics from data. A neural network reads local values and outputs updated values for the next time step, which is fed back into the network at time *t+1*. This makes an NCA effectively a recurrent CNN! NCAs can learn to grow, regenerate, and sustain surprisingly complex dynamical patterns.
 
-The space of all possible NCAs is infinite, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).
+The space of all possible NCAs is infinite*, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).
 
+**While the number of possible NCA architectures is truly unbounded (we can always add another layer), the number of distinguishable transition functions is finite: the inputs and outputs are encoded with finite-precision floating point. Many different architectures and parameter settings will produce identical behavior. The space is astronomically vast but ultimately discrete, appearing continuous to us.*
 
 ---
 
@@ -85,9 +86,7 @@ I landed on the following architecture, which is extremely tiny because I want t
 
 ## Learned Latent Space
 
-Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to *generate* NCAs. And that's what the Neuromusical Cellular Automata does:
-
-This architecture uses a **variational autoencoder (VAE)** to map context frames into a low-dimensional latent space. A **hypernetwork** then transforms each latent vector into a unique set of NCA weights. This means every point in the latent space corresponds to a different cellular automaton with its own dynamics.
+Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to *generate* NCAs. And that's what the Neuromusical Cellular Automata does.
 
 Because this latent space is learned it can be much smoother and more semantically meaningful than exploring the raw space of NCA parameters. Of course, what the latent space actually learns is entirely dependent on the data used to train the model.
 
@@ -111,15 +110,15 @@ As you can see, the NCA does capture the general size, color, and motion of the 
 
 The training data for the Neuromusical Cellular Automata and the demo at the top of this page is generated by pairing audio with deterministic visualizations.
 
-![Ground Truth Example 1|512x256](assets/spectrogram_piano.gif)
+![Ground Truth Example 1|768x256](assets/spectrogram_piano.gif)
 
 For each instrument sample (piano, violin, etc.), we extract audio features: detected harmonics, loudness (RMS), and spectral brightness. These features drive the "circles" visualization where each harmonic becomes a colored circle - low frequencies appear warm (red/orange) near the center, high frequencies appear cool (blue) toward the edges. Circle size pulses with loudness, and positions orbit based on harmonic relationships.
 
-![Ground Truth Example 2|512x256](assets/spectrogram_xylophone.gif)
+![Ground Truth Example 2|768x256](assets/spectrogram_xylophone.gif)
 
 The first frame of each training sequence is a **mel spectrogram** (a 2D image of frequency vs. time), which the encoder compresses into a 64-dimensional latent vector. The decoder, a hypernetwork, transforms this latent into NCA weights that generate the subsequent circle animation frames.
 
-![Ground Truth Example 3|512x256](assets/spectrogram_clarinet.gif)
+![Ground Truth Example 3|768x256](assets/spectrogram_clarinet.gif)
 
 For the piano interface, we pre-generate spectrograms for all 19 notes (F4 through B5) across every instrument. Each spectrogram is encoded into its latent vector and stored in a manifest. When you press a piano key, the corresponding latent is loaded; pressing multiple keys (a chord) averages their latents together. This blended latent then generates the NCA in real-time, creating visualizations that interpolate between the learned behaviors of each note.
 
@@ -130,15 +129,15 @@ For the piano interface, we pre-generate spectrograms for all 19 notes (F4 throu
 This demo combines two separately trained models:
 
 - **Encoder:** From the spectrogram-to-NCA model used in the piano demo above
-- **Hypernetwork:** From a new model trained to generate emoji (or rather to *generate NCAs* which generate emoji
+- **Hypernetwork:** From a new model trained to generate emoji (or rather to *generate NCAs* which generate emoji)
 
 The idea is to explore whether we can use music and sound to navigate the space of possible NCAs, even when the hypernetwork wasn't jointly trained with spectrograms. Your microphone audio gets converted to a spectrogram, encoded to a latent vector, and that latent drives the emoji NCA's dynamics in real-time.
 
 <!-- REALTIME_DEMO -->
 
-You're unlikely to find any recognizable emoji in the above demo. The spectrogram encoder's latent space doesn't match what the emoji hypernetwork expects. In the future, I'd like to try aligning the two embedding spaces and see if we can produce actual images from the music!
+With enough experimentation it's possible to find recognizable emoji in the above demo. The spectrogram encoder's latent space doesn't match what the emoji hypernetwork expects, but I trained a simple MLP to project between the manifolds of the two latent spaces. I'd like to experiment with different methods to make the projection more obviously meaningful (but we'd likely need networks powerful enough to actually *represent* that meaning).
 
-Still, what makes this interesting is that we're navigating a structured region of NCA parameter space. The hypernetwork constrains the outputs to "plausible" cellular automata, and the audio encoder provides a consistent way to explore that space. Different sounds produce different dynamics, and you can discover regularities. For example, cleaner pure tones tend to make more stable structures where as disonance and noise result in more chaotic patterns!
+Still, what makes this interesting is that we're navigating a structured region of NCA parameter space. The hypernetwork constrains the outputs to "plausible" cellular automata, and the audio encoder provides a consistent way to explore that space. Different sounds produce different dynamics, and you *can* discover regularities.
 
 
 For reference, here's what the hypernetwork (and its generated NCAs) produces with its matching encoder:
@@ -153,19 +152,18 @@ For reference, here's what the hypernetwork (and its generated NCAs) produces wi
 
 This approach opens several interesting directions:
 
-- The latent space could be conditioned on higher-level descriptions, allowing **natural language control** over the generated dynamics
-- Larger grids and deeper NCA architectures could capture more complex phenomena
+- The latent space could be conditioned on higher-level concepts, allowing semantic control over the generated dynamics
+- Larger grids and deeper NCAs, and more interesting training data could capture more complex phenomena
 - The ability for NCAs to track/produce **agentic behavior** on the grid is particularly fascinating
+- Visualizing and analyzing the **hidden channels** of the NCA grid to find out more about how the visible RGB channels are computed, which would be especially interesing in the case of agentic behavior
 
 ### Agentic behavior
-I did some early experiments with boids exhibiting various behaviors such as flocking or predator-prey dynamics, but this proved too challenging for my tiny 2-layer conv nets. It would be fascinating to see if an NCA could learn theory of mind to generate the actions of human players in Atari games, or even more complex environments and life-like behaviors.
+I did some early experiments with boids exhibiting various behaviors such as flocking or predator-prey dynamics, but this proved too challenging for my tiny 2-layer conv nets. It would be fascinating to see if an NCA could learn theory of mind to generate the behaviors of simple agents. A more ambitious goal would be to model human player actions in Atari games, or even more complex environments and life-like behaviors from nature itself.
 
 ### Sound as Navigation
-Broadly, music offers a compelling interface for exploring high-dimensional latent spaces. The simple circle visualizations here map audio features to color and motion, but richer correspondences are possible. We could learn a shared embedding where the space of complex music aligns with the space of natural images or video, not through superficial features, but through deeper semantic structure: tension and resolution in a symphony mapping to dramatic arcs in film, the texture of a jazz improvisation corresponding to the organic chaos of a forest canopy, or the emotional trajectory of a song finding its visual analogue in shifting landscapes.
+Broadly, music offers a compelling interface for exploring high-dimensional latent spaces. The simple visualizations used here map audio features to color and motion, but richer correspondences are possible. We could learn a deeper semantic structure: tension and resolution in a symphony, the texture of a jazz improvisation, or the chaos of city and forest soundscapes all provide meaningful ways of steering through latent space.
 
-Contrastive learning on large audio-visual datasets could discover these cross-modal correspondences, letting music become a navigation tool for exploring generative models of images, video, or even text, playing a melody to traverse a space of scenes that feel emotionally consonant with the sound.
-
-### Endless Possibility
+### Open Ended
 The combination of neural cellular automata with learned latent spaces suggests a fascinating paradigm: compact, local update rules that are themselves generated by a learned model, producing an open-ended family of emergent systems from a single trained network.
 
 ---
