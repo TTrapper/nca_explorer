@@ -754,13 +754,17 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
                 <div class="rt-controls">
                     <button id="rtEnableMicBtn">Enable Microphone</button>
-                    <button id="rtResetGridBtn" disabled>Reset Grid</button>
                     <span id="rtMicStatus"></span>
                 </div>
                 <div class="rt-controls" style="margin-top: 10px;">
                     <label for="rtSampleRateSlider" style="color: #aaa; font-size: 0.9em;">Sample Rate:</label>
                     <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="500" style="width: 120px;">
                     <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">500ms</span>
+                </div>
+                <div class="rt-controls" style="margin-top: 10px;">
+                    <label for="rtLatentScaleSlider" style="color: #aaa; font-size: 0.9em;">Latent Scale:</label>
+                    <input type="range" id="rtLatentScaleSlider" min="0.5" max="100" step="0.5" value="1" style="width: 120px;">
+                    <span id="rtLatentScaleValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">1.0x</span>
                 </div>
             </div>
         </div>
@@ -2085,6 +2089,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     // Timing
     let rtLastEncoderRun = 0;
     let rtEncoderThrottleMs = 500;  // Updated by slider
+    let rtLatentScale = 1.0;  // Updated by slider
     let rtRunning = false;
 
     // Canvas refs
@@ -2255,6 +2260,13 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             z = projResult.z_target.data;
         }}
 
+        // Apply latent scale (expands narrow encoder distribution)
+        if (rtLatentScale !== 1.0) {{
+            for (let i = 0; i < z.length; i++) {{
+                z[i] *= rtLatentScale;
+            }}
+        }}
+
         // Decode z -> NCA weights (but NOT grid - grid is preserved)
         // Note: if projection was used, z is now in target latent space
         const decoderLatentDim = rtProjectionSession ? z.length : rtLatentDim;
@@ -2268,7 +2280,19 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             layer2_w: decResult.layer2_w,
             layer2_b: decResult.layer2_b,
         }};
-        // Note: decResult.first_frame is ignored - we don't reset the grid
+
+        // Reset grid to first_frame from decoder
+        const gridSize = rtGridChannels * rtHeight * rtWidth;
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = gridSize - imgSize;
+
+        const firstFrame = decResult.first_frame.data;
+        if (!rtNcaFrame) rtNcaFrame = new Float32Array(imgSize);
+        if (!rtHidden) rtHidden = new Float32Array(hiddenSize);
+
+        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = firstFrame[i];
+        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = firstFrame[imgSize + i];
+        rtGrid = true;
     }}
 
     async function rtStepNca() {{
@@ -2301,23 +2325,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         for (let i = 0; i < hiddenSize; i++) {{
             rtHidden[i] = Math.tanh(raw[imgSize + i]);
         }}
-    }}
-
-    function rtRandomizeGrid() {{
-        // Fill grid with random noise (keeps current z and NCA weights)
-        const imgSize = rtChannels * rtHeight * rtWidth;
-        const hiddenSize = rtGridChannels * rtHeight * rtWidth - imgSize;
-
-        // Random RGB values in [0, 1]
-        if (!rtNcaFrame) rtNcaFrame = new Float32Array(imgSize);
-        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = Math.random();
-
-        // Random hidden values (small, like tanh range)
-        if (!rtHidden) rtHidden = new Float32Array(hiddenSize);
-        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = (Math.random() - 0.5) * 0.2;
-
-        // Set rtGrid flag so rtStepNca knows grid is initialized
-        rtGrid = true;
     }}
 
     async function rtInitGrid() {{
@@ -2376,7 +2383,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     // UI Event Handlers
     // -----------------------------------------------------------------------
     const rtEnableMicBtn = document.getElementById('rtEnableMicBtn');
-    const rtResetGridBtn = document.getElementById('rtResetGridBtn');
     const rtMicStatus = document.getElementById('rtMicStatus');
 
     if (rtEnableMicBtn) {{
@@ -2392,7 +2398,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                 rtEnableMicBtn.textContent = 'Enable Microphone';
                 rtEnableMicBtn.classList.remove('active');
                 rtMicStatus.textContent = '';
-                rtResetGridBtn.disabled = true;
                 return;
             }}
 
@@ -2442,7 +2447,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                 rtEnableMicBtn.classList.add('active');
                 rtMicStatus.textContent = 'Active';
                 rtMicStatus.classList.remove('error');
-                rtResetGridBtn.disabled = false;
 
                 rtMicrophoneLoop();
             }} catch (e) {{
@@ -2455,13 +2459,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         }});
     }}
 
-    if (rtResetGridBtn) {{
-        rtResetGridBtn.addEventListener('click', () => {{
-            if (!rtNcaFrame) return;
-            rtRandomizeGrid();
-        }});
-    }}
-
     // Sample rate slider
     const rtSampleRateSlider = document.getElementById('rtSampleRateSlider');
     const rtSampleRateValue = document.getElementById('rtSampleRateValue');
@@ -2469,6 +2466,16 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         rtSampleRateSlider.addEventListener('input', () => {{
             rtEncoderThrottleMs = parseInt(rtSampleRateSlider.value);
             rtSampleRateValue.textContent = rtEncoderThrottleMs + 'ms';
+        }});
+    }}
+
+    // Latent scale slider
+    const rtLatentScaleSlider = document.getElementById('rtLatentScaleSlider');
+    const rtLatentScaleValueEl = document.getElementById('rtLatentScaleValue');
+    if (rtLatentScaleSlider) {{
+        rtLatentScaleSlider.addEventListener('input', () => {{
+            rtLatentScale = parseFloat(rtLatentScaleSlider.value);
+            rtLatentScaleValueEl.textContent = rtLatentScale.toFixed(1) + 'x';
         }});
     }}
 
