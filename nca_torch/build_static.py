@@ -2306,7 +2306,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         const hiddenSize = gridSize - imgSize;
 
         const firstFrame = decResult.first_frame.data;
-        const blendRate = 0.25;  // How fast to blend (0 = no change, 1 = instant)
+        const blendRate = 1.0;  // How fast to blend (0 = no change, 1 = instant)
 
         if (!rtNcaFrame) {{
             // First time - initialize directly
