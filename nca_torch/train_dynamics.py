@@ -60,7 +60,11 @@ def get_args():
 
     # NCA steps per frame
     parser.add_argument("--num-steps", type=int, default=1,
-                        help="Number of NCA steps per predicted frame (more = more compute per frame)")
+                        help="Starting number of NCA steps (doubles each epoch up to --max-num-steps)")
+    parser.add_argument("--max-num-steps", type=int, default=1,
+                        help="Maximum NCA steps per frame (schedule: 1, 2, 4, ... up to this)")
+    parser.add_argument("--detach-steps", action="store_true",
+                        help="Detach grid between steps (each step learns independently)")
 
     # Latent noise (helps fill in latent space)
     parser.add_argument("--latent-noise-std", type=float, default=0.0,
@@ -241,7 +245,8 @@ class DynamicsTrainer:
             grid = self.model.first_frame_decoder(z)  # [B, grid_channels, H, W]
 
             # Total NCA steps = num_steps * M (target advances every num_steps)
-            total_nca_steps = self.args.num_steps * M
+            num_steps = self.current_num_steps
+            total_nca_steps = num_steps * M
             target_idx = 0
 
             for step in range(total_nca_steps):
@@ -272,8 +277,12 @@ class DynamicsTrainer:
                 total_step_kl += kl_loss.item()
                 total_step_perceptual += perceptual_loss_val.item() if torch.is_tensor(perceptual_loss_val) else 0.0
 
+                # Detach grid to cut gradient flow between steps
+                if self.args.detach_steps:
+                    grid = grid.detach()
+
                 # Advance target every num_steps
-                if (step + 1) % self.args.num_steps == 0 and target_idx < M - 1:
+                if (step + 1) % num_steps == 0 and target_idx < M - 1:
                     target_idx += 1
 
             # Average loss over all NCA steps
@@ -333,7 +342,8 @@ class DynamicsTrainer:
             grid = self.model.first_frame_decoder(z)  # [B, grid_channels, H, W]
 
             # Total NCA steps = num_steps * M (target advances every num_steps)
-            total_nca_steps = self.args.num_steps * M
+            num_steps = self.current_num_steps
+            total_nca_steps = num_steps * M
             target_idx = 0
             batch_loss = 0
 
@@ -359,7 +369,7 @@ class DynamicsTrainer:
                 batch_loss += loss.item()
 
                 # Advance target every num_steps
-                if (step + 1) % self.args.num_steps == 0 and target_idx < M - 1:
+                if (step + 1) % num_steps == 0 and target_idx < M - 1:
                     target_idx += 1
 
             total_loss += batch_loss / total_nca_steps
@@ -428,7 +438,7 @@ class DynamicsTrainer:
             # Row 2: Prediction (t+1) using FirstFrameDecoder → NCA
             pred = self.model.decode(
                 z[col:col+1],
-                num_steps=self.args.num_steps,
+                num_steps=self.current_num_steps,
                 init_mode="first_frame",
             )
             img = pred[0].permute(1, 2, 0).cpu().numpy()
@@ -478,7 +488,8 @@ class DynamicsTrainer:
         frames = [grid[:, :C].clone()]  # First frame is RGB portion
 
         # Run NCA steps, capturing frame every num_steps
-        total_nca_steps = rollout_steps * self.args.num_steps
+        num_steps = self.current_num_steps
+        total_nca_steps = rollout_steps * num_steps
         for step in range(total_nca_steps):
             grid = self.model.decoder.nca_step(grid, layer1_w, layer1_b, layer2_w, layer2_b)
 
@@ -486,7 +497,7 @@ class DynamicsTrainer:
             grid = torch.cat([torch.sigmoid(grid[:, :C]), torch.tanh(grid[:, C:])], dim=1)
 
             # Capture frame every num_steps
-            if (step + 1) % self.args.num_steps == 0:
+            if (step + 1) % num_steps == 0:
                 frames.append(grid[:, :C].clone())
 
         # Plot: ground truth on top, predictions on bottom
@@ -541,7 +552,7 @@ class DynamicsTrainer:
             "in_channels": self.in_channels,
             "grid_size": self.grid_size,
             "context_frames": self.context_frames,
-            "num_steps": self.args.num_steps,
+            "num_steps": self.args.max_num_steps,
         }
         torch.save(checkpoint, self.save_dir / f"checkpoint_epoch_{epoch:03d}.pt")
         torch.save(checkpoint, self.save_dir / "checkpoint_latest.pt")
@@ -554,9 +565,10 @@ class DynamicsTrainer:
         print(f"\nTraining NCA Dynamics Predictor on {self.device}")
         print(f"VAE mode: {not self.args.no_vae}")
         print(f"Context frames: {self.context_frames}")
-        print(f"NCA steps per frame: {self.args.num_steps}")
+        print(f"NCA steps schedule: 1 → {self.args.max_num_steps} (doubles each epoch)")
+        print(f"Detach steps: {self.args.detach_steps}")
         print(f"Max future frames: {self.max_future_frames} (sequence warmup: 1 → max)")
-        print(f"First frame: FirstFrameDecoder, dynamics: NCA ({self.args.num_steps} steps)")
+        print(f"First frame: FirstFrameDecoder, dynamics: NCA (up to {self.args.max_num_steps} steps)")
         print(f"Loss weights: recon={self.args.recon_weight}, kl={self.args.kl_weight}", end="")
         if self.perceptual_loss is not None:
             print(f", perceptual={self.args.perceptual_weight}")
@@ -564,12 +576,16 @@ class DynamicsTrainer:
             print()
 
         best_loss = float("inf")
+        self.current_num_steps = 1  # Will be updated each epoch
 
         for epoch in range(1, self.args.epochs + 1):
             # Sequence length warmup: epoch 1 = 1 future frame, epoch 2 = 2, etc.
             future_frames = min(epoch, self.max_future_frames)
             train_size, val_size = self.create_dataloaders(future_frames)
-            print(f"\nEpoch {epoch}: future_frames={future_frames}, samples={train_size}")
+
+            # NCA steps warmup: doubles each epoch (1, 2, 4, 8, ...) up to max
+            self.current_num_steps = min(2 ** (epoch - 1), self.args.max_num_steps)
+            print(f"\nEpoch {epoch}: future_frames={future_frames}, num_steps={self.current_num_steps}, samples={train_size}")
 
             train_loss, train_recon, train_kl, train_perceptual = self.train_epoch(epoch)
             val_loss, val_recon, val_kl, val_perceptual = self.evaluate()
