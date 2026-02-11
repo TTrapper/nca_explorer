@@ -284,6 +284,79 @@
             color: #aaa;
             font-style: italic;
         }
+
+        /* Real-time audio section */
+        .rt-section {
+            margin-top: 60px;
+            padding: 30px;
+            background: linear-gradient(135deg, #16213e 0%, #1a1a2e 100%);
+            border-radius: 15px;
+            border: 1px solid #4fc3f7;
+        }
+        .rt-section h2 {
+            color: #4fc3f7;
+            margin-bottom: 10px;
+            font-size: 1.8em;
+        }
+        .rt-section .rt-subtitle {
+            color: #888;
+            margin-bottom: 25px;
+        }
+        .rt-container {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 20px;
+        }
+        .rt-displays {
+            display: flex;
+            gap: 30px;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        .rt-display {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+        .rt-display canvas {
+            border: 2px solid #4fc3f7;
+            border-radius: 8px;
+            background: #000;
+            image-rendering: pixelated;
+        }
+        .rt-display .label {
+            margin-top: 8px;
+            color: #4fc3f7;
+            font-size: 0.9em;
+        }
+        .rt-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            justify-content: center;
+        }
+        .rt-controls button {
+            background: #4fc3f7;
+            color: #1a1a2e;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-weight: bold;
+            font-size: 1em;
+            transition: all 0.2s;
+        }
+        .rt-controls button:hover { background: #81d4fa; }
+        .rt-controls button:disabled { background: #555; cursor: not-allowed; }
+        .rt-controls button.active { background: #f44336; }
+        #rtMicStatus {
+            color: #4caf50;
+            font-size: 0.9em;
+            min-width: 80px;
+        }
+        #rtMicStatus.error { color: #f44336; }
     </style>
 </head>
 <body>
@@ -347,7 +420,7 @@
         <div class="article">
             <hr>
             
-            <p>The demo above generates a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint.</p>
+            <p>The demo above <em>generates</em> a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint, and facilitating the exploratin of an embeddings space of NCAs through music.</p>
             
             
             <h2>How to Play</h2>
@@ -362,7 +435,7 @@
             
             <h2>Gallery</h2>
             
-            <p>Here are some examples of intersting stable patters you might find the in the space of Neuromusical Cellular Automata. Set the <strong>Perturbation</strong> level high or use to the <strong>Random Latent</strong> button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling 3D objects with realisting lighting!</p>
+            <p>Here are some examples of intersting stable patters you might find the in the space of Neuromusical Cellular Automata. Set the <strong>Perturbation</strong> level high or use to the <strong>Random Latent</strong> button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!</p>
             
             <table class="gallery-table">
             <tr>
@@ -382,15 +455,43 @@
             </tr>
             </table>
             
+            
+            <h3>Random NCAs</h3>
+            
+            <p>In contrast to the above NCA's sampled from a learned latent space (so that we are navigating a particularly interesting and beautiful region of NCA parameter space), most of NCA space is more boring and tends to collapse to blank or static patterns:</p>
+            
+            <table class="gallery-table">
+            <tr>
+            <td><img src="assets/random_nca1.gif" alt="rand1\" style="width: 128px; height: 128px;" /></td>
+            <td><img src="assets/random_nca2.gif" alt="rand2\" style="width: 128px; height: 128px;" /></td>
+            <td><img src="assets/random_nca3.gif" alt="rand3\" style="width: 128px; height: 128px;" /></td>
+            </tr>
+            </table>
+            
             <hr>
             
             <h2>Why This Project</h2>
             
-            <p>I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes that we can watch unfold and evolve. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but predicatbly most setups were duds.</p>
+            <p>I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but predicatbly most setups were duds.</p>
             
-            <p>This got me thinking about the embeddings space of NCA parameters, and how we could explore it. To get a smoother and hopefully more interesting embedding space, I decided to try training a neural network to <em>generate</em> NCA parameters from a conditioned latent space.</p>
+            <p>This got me thinking about the embeddings space of NCA parameters, and how we could explore it. To get a smoother and hopefully more interesting embedding space, I decided to train a neural network to <em>generate</em> NCA parameters from a conditioned latent space.</p>
             
             <p>In this way, I've ended up with a neural network that generates neural networks from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the embedding space, which is very fun.</p>
+            
+            <h2>Cellular Automata</h2>
+            
+            <p>Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.</p>
+            
+            <p>Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood and the 1 center cell's new state ,which gives us 2^10 (1024) entries per rule. Each entry maps the 9-cell states at time <em>t</em> to the center cell's state at time <em>t+1</em>. The rule is then convolved over the entire grid to get the new state at each time step.</p>
+            
+            <div class="article-img"><img src="assets/rainbow_gliders.gif" alt="Rainbow Gliders" style="width: 512px; height: 512px;" /></div>
+            
+            <p><strong>Neural Cellular Automata (NCA)</strong> replace the discrete update rules of CAs with a small neural network, allowing the system to learn its own dynamics from data. A neural network reads local values and outputs updated values for the next time step, which is fed back into the network at time <em>t+1</em>. This makes an NCA effectively a recurrent CNN! NCAs can learn to grow, regenerate, and sustain surprisingly complex dynamical patterns.</p>
+            
+            <p>The space of all possible NCAs is infinite, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).</p>
+            
+            
+            <hr>
             
             <h2>Hardware Constraints</h2>
             
@@ -402,7 +503,7 @@
             
             <p><strong>VAE Encoder</strong> (Context Frames → Latent)</p>
             <ul>
-            <li>Input: 4 context frames × 3 RGB channels = 12 channels, 32×32</li>
+            <li>Input: context frames, 32×32</li>
             <li>Conv layers: 12→32→64→128, each 3×3 kernel, stride 2, BatchNorm, LeakyReLU(0.2)</li>
             <li>Flatten: 128 × 4 × 4 = 2,048 features</li>
             <li>Two linear heads (μ and σ): 2,048 → 64 each</li>
@@ -426,28 +527,13 @@
             
             <hr>
             
-            <h2>Cellular Automata</h2>
-            
-            <p>Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.</p>
-            
-            <p>Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood and the 1 center cell's new state ,which gives us 2^10 (1024) entries per rule. Each entry maps the 9-cell states at time <em>t</em> to the center cell's state at time <em>t+1</em>. The rule is then convolved over the entire grid to get the new state at each time step.</p>
-            
-            <div class="article-img"><img src="assets/rainbow_gliders.gif" alt="Rainbow Gliders" style="width: 512px; height: 512px;" /></div>
-            
-            <p><strong>Neural Cellular Automata (NCA)</strong> replace the discrete update rules of CAs with a small neural network, allowing the system to learn its own dynamics from data. A neural network reads local values and outputs updated values for the next time step, which is fed back into the network at time <em>t+1</em>. This makes an NCA effectively a recurrent CNN! NCAs can learn to grow, regenerate, and sustain surprisingly complex dynamical patterns.</p>
-            
-            <p>The space of all possible NCAs is infinite, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).</p>
-            
-            
-            <hr>
-            
             <h2>Learned Latent Space</h2>
             
-            <p>Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to <em>generate</em> NCAs. And that's what this Neuromusical Cellular Automata does:</p>
+            <p>Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to <em>generate</em> NCAs. And that's what the Neuromusical Cellular Automata does:</p>
             
             <p>This architecture uses a <strong>variational autoencoder (VAE)</strong> to map context frames into a low-dimensional latent space. A <strong>hypernetwork</strong> then transforms each latent vector into a unique set of NCA weights. This means every point in the latent space corresponds to a different cellular automaton with its own dynamics.</p>
             
-            <p>Because this latent space is learned it can be much smoother and more semantically meaningful than exploring the raw space of NCA parameters. Of cources, what the latent space actually learns is entirely dependent on the data used to train the model.</p>
+            <p>Because this latent space is learned it can be much smoother and more semantically meaningful than exploring the raw space of NCA parameters. Of course, what the latent space actually learns is entirely dependent on the data used to train the model.</p>
             
             <hr>
             
@@ -480,6 +566,61 @@
             <div class="article-img"><img src="assets/spectrogram_clarinet.gif" alt="Ground Truth Example 3" style="width: 512px; height: 256px;" /></div>
             
             <p>For the piano interface, we pre-generate spectrograms for all 19 notes (F4 through B5) across every instrument. Each spectrogram is encoded into its latent vector and stored in a manifest. When you press a piano key, the corresponding latent is loaded; pressing multiple keys (a chord) averages their latents together. This blended latent then generates the NCA in real-time, creating visualizations that interpolate between the learned behaviors of each note.</p>
+            
+            <hr>
+            
+            <h2>Realtime Exploration</h2>
+            
+            <p>This demo combines two separately trained models:</p>
+            
+            <ul>
+            <li><strong>Encoder:</strong> From the spectrogram-to-NCA model used in the piano demo above</li>
+            <li><strong>Hypernetwork:</strong> From a new model trained to generate emoji (or rather to <em>generate NCAs</em> which generate emoji</li>
+            </ul>
+            
+            <p>The idea is to explore whether we can use music and sound to navigate the space of possible NCAs, even when the hypernetwork wasn't jointly trained with spectrograms. Your microphone audio gets converted to a spectrogram, encoded to a latent vector, and that latent drives the emoji NCA's dynamics in real-time.</p>
+            
+            <p>
+        <div class="rt-section" id="realtimeAudioSection">
+            <h2>Real-Time Audio</h2>
+            <p class="rt-subtitle">Try making sounds with different textures: humming, clapping, whistling, or playing different instruments. Each sound creates a unique spectrogram that drives the NCA dynamics.</p>
+
+            <div class="rt-container">
+                <div class="rt-displays">
+                    <div class="rt-display">
+                        <canvas id="rtSpecCanvas" width="256" height="256"></canvas>
+                        <div class="label">Live Spectrogram</div>
+                    </div>
+                    <div class="rt-display">
+                        <canvas id="rtNcaCanvas" width="256" height="256"></canvas>
+                        <div class="label">NCA Output</div>
+                    </div>
+                </div>
+
+                <div class="rt-controls">
+                    <button id="rtEnableMicBtn">Enable Microphone</button>
+                    <button id="rtResetGridBtn" disabled>Reset Grid</button>
+                    <span id="rtMicStatus"></span>
+                </div>
+                <div class="rt-controls" style="margin-top: 10px;">
+                    <label for="rtSampleRateSlider" style="color: #aaa; font-size: 0.9em;">Sample Rate:</label>
+                    <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="500" style="width: 120px;">
+                    <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">500ms</span>
+                </div>
+            </div>
+        </div>
+</p>
+            
+            <p>You're unlikely to find any recognizable emoji in the above demo. The spectrogram encoder's latent space doesn't match what the emoji hypernetwork expects. In the future, I'd like to try aligning the two embedding spaces and see if we can produce actual images from the music!</p>
+            
+            <p>Still, what makes this interesting is that we're navigating a structured region of NCA parameter space. The hypernetwork constrains the outputs to "plausible" cellular automata, and the audio encoder provides a consistent way to explore that space. Different sounds produce different dynamics, and you can discover regularities. For example, cleaner pure tones tend to make more stable structures where as disonance and noise result in more chaotic patterns!</p>
+            
+            
+            <p>For reference, here's what the hypernetwork (and its generated NCAs) produces with its matching encoder:</p>
+            
+            <div class="article-img"><img src="assets/emoji1.gif" alt="Emoji NCA 1\" style="width: 256px; height: 128px;" /></div>
+            <div class="article-img"><img src="assets/emoji2.gif" alt="Emoji NCA 2\" style="width: 256px; height: 128px;" /></div>
+            <div class="article-img"><img src="assets/emoji3.gif" alt="Emoji NCA 3\" style="width: 256px; height: 128px;" /></div>
             
             <hr>
             
@@ -551,7 +692,8 @@
     // Current latent & decoded params
     let currentZ = null;           // Float32Array [latentDim]
     let cachedParams = null;       // { layer1_w, layer1_b, layer2_w, layer2_b } ort.Tensor
-    let currentNcaFrame = null;    // Float32Array [C*H*W] in [0,1]
+    let currentNcaFrame = null;    // Float32Array [C*H*W] in [0,1] (for display)
+    let currentHidden = null;      // Float32Array [(gridChannels-C)*H*W] evolving hidden channels
 
     // Ground truth data for current sequence
     let gtData = null;             // Uint8Array [T*H*W*C]
@@ -637,15 +779,12 @@
 
     function renderGtCanvas() {
         if (GITHUB_PAGES || !gtData || !gtCtx) return;
-        const offset = (contextFramesCount + currentFrameIdx) * height * width * channels;
-        const end = offset + height * width * channels;
-        if (end > gtData.length) {
-            // Past the end — black
-            const pixels = new Uint8Array(height * width * channels);
-            renderFrame(gtCtx, gtCanvas, pixels, width, height, channels);
-            return;
-        }
-        const pixels = gtData.subarray(offset, end);
+        const frameSize = height * width * channels;
+        const totalFrames = Math.floor(gtData.length / frameSize);
+        // Clamp to last available frame instead of showing black
+        const frameIdx = Math.min(contextFramesCount + currentFrameIdx, totalFrames - 1);
+        const offset = frameIdx * frameSize;
+        const pixels = gtData.subarray(offset, offset + frameSize);
         renderFrame(gtCtx, gtCanvas, pixels, width, height, channels);
     }
 
@@ -701,27 +840,30 @@
             layer2_b: results.layer2_b,
         };
 
-        // first_frame is [1, C, H, W] already sigmoided
-        const ff = results.first_frame.data;
-        currentNcaFrame = new Float32Array(ff.length);
-        currentNcaFrame.set(ff);
-    }
-
-    async function stepNca() {
-        // Build grid: image channels from currentNcaFrame, noise in hidden channels
+        // first_frame is full grid [1, gridChannels, H, W] from FirstFrameDecoder
+        // RGB channels are already sigmoided, hidden channels are tanh * 0.1
+        const initialGrid = results.first_frame.data;
         const gridSize = gridChannels * height * width;
         const imgSize = channels * height * width;
-        const grid = new Float32Array(gridSize);
+        const hiddenSize = gridSize - imgSize;
 
-        // Image channels: raw [0,1] values (matching init_grid "image" mode)
-        grid.set(currentNcaFrame);
-        // Hidden channels: Gaussian noise * 0.1 (matching init_grid "image" mode)
-        for (let i = imgSize; i < gridSize; i++) {
-            grid[i] = randn() * 0.1;
+        // Initialize current state from FirstFrameDecoder output
+        currentNcaFrame = new Float32Array(imgSize);
+        currentHidden = new Float32Array(hiddenSize);
+        for (let i = 0; i < imgSize; i++) {
+            currentNcaFrame[i] = initialGrid[i];
+        }
+        for (let i = 0; i < hiddenSize; i++) {
+            currentHidden[i] = initialGrid[imgSize + i];
         }
 
-        let gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
+        // Run NCA steps, squashing after each (matches training)
         for (let s = 0; s < numSteps; s++) {
+            const grid = new Float32Array(gridSize);
+            grid.set(currentNcaFrame);
+            grid.set(currentHidden, imgSize);
+
+            const gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
             const out = await ncaStepSession.run({
                 grid: gridTensor,
                 layer1_w: cachedParams.layer1_w,
@@ -729,14 +871,46 @@
                 layer2_w: cachedParams.layer2_w,
                 layer2_b: cachedParams.layer2_b,
             });
-            gridTensor = out.new_grid;
-        }
 
-        // Sigmoid on first C channels
-        const raw = gridTensor.data;
-        currentNcaFrame = new Float32Array(imgSize);
+            // Squash after each step
+            const raw = out.new_grid.data;
+            for (let i = 0; i < imgSize; i++) {
+                currentNcaFrame[i] = sigmoid(raw[i]);
+            }
+            for (let i = 0; i < hiddenSize; i++) {
+                currentHidden[i] = Math.tanh(raw[imgSize + i]);
+            }
+        }
+    }
+
+    async function stepNca() {
+        // Run ONE NCA step (animation loop shows every step)
+        const gridSize = gridChannels * height * width;
+        const imgSize = channels * height * width;
+        const hiddenSize = gridSize - imgSize;
+
+        // Build grid from current state
+        const grid = new Float32Array(gridSize);
+        grid.set(currentNcaFrame);
+        grid.set(currentHidden, imgSize);
+
+        // Run one NCA step
+        const gridTensor = new ort.Tensor('float32', grid, [1, gridChannels, height, width]);
+        const out = await ncaStepSession.run({
+            grid: gridTensor,
+            layer1_w: cachedParams.layer1_w,
+            layer1_b: cachedParams.layer1_b,
+            layer2_w: cachedParams.layer2_w,
+            layer2_b: cachedParams.layer2_b,
+        });
+
+        // Squash (matches training)
+        const raw = out.new_grid.data;
         for (let i = 0; i < imgSize; i++) {
             currentNcaFrame[i] = sigmoid(raw[i]);
+        }
+        for (let i = 0; i < hiddenSize; i++) {
+            currentHidden[i] = Math.tanh(raw[imgSize + i]);
         }
     }
 
@@ -1344,6 +1518,427 @@
     }
 
     init();
+    })();
+
+    // =========================================================================
+    // Real-Time Audio Section (separate IIFE to avoid variable conflicts)
+    // =========================================================================
+    (function() {
+    "use strict";
+
+    // Wait for manifest to load before initializing
+    let rtManifest = null;
+    let rtWidth = 0, rtHeight = 0, rtChannels = 0;
+    let rtLatentDim = 0, rtGridChannels = 0, rtNumSteps = 0;
+    let rtEncoderInputChannels = 0;
+
+    // ONNX sessions
+    let rtEncodeSession = null;
+    let rtDecodeSession = null;
+    let rtNcaSession = null;
+
+    // Audio state
+    let rtAudioContext = null;
+    let rtAnalyser = null;
+    let rtSpectrogramBuffer = null;
+    const SPEC_SIZE = 32;  // Match grid size
+
+    // NCA state (persistent across encoder updates)
+    let rtGrid = null;           // Full grid [gridChannels * H * W]
+    let rtCachedParams = null;   // NCA weights from decoder
+    let rtNcaFrame = null;       // RGB display buffer
+    let rtHidden = null;         // Hidden channels
+
+    // Timing
+    let rtLastEncoderRun = 0;
+    let rtEncoderThrottleMs = 500;  // Updated by slider
+    let rtRunning = false;
+
+    // Canvas refs
+    const rtSpecCanvas = document.getElementById('rtSpecCanvas');
+    const rtNcaCanvas = document.getElementById('rtNcaCanvas');
+    const rtSpecCtx = rtSpecCanvas ? rtSpecCanvas.getContext('2d') : null;
+    const rtNcaCtx = rtNcaCanvas ? rtNcaCanvas.getContext('2d') : null;
+
+    function sigmoid(x) {
+        return 1 / (1 + Math.exp(-x));
+    }
+
+    function randn() {
+        const u1 = Math.random(), u2 = Math.random();
+        return Math.sqrt(-2 * Math.log(u1)) * Math.cos(2 * Math.PI * u2);
+    }
+
+    // -----------------------------------------------------------------------
+    // Audio Capture
+    // -----------------------------------------------------------------------
+    async function initMicrophone() {
+        try {
+            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            rtAudioContext = new AudioContext();
+            const source = rtAudioContext.createMediaStreamSource(stream);
+            rtAnalyser = rtAudioContext.createAnalyser();
+            rtAnalyser.fftSize = 2048;
+            rtAnalyser.smoothingTimeConstant = 0.8;
+            source.connect(rtAnalyser);
+            rtSpectrogramBuffer = new Float32Array(SPEC_SIZE * SPEC_SIZE).fill(0);
+            return true;
+        } catch (e) {
+            console.error('Microphone init failed:', e);
+            return false;
+        }
+    }
+
+    function computeSpectrogram() {
+        if (!rtAnalyser) return null;
+
+        const freqData = new Float32Array(rtAnalyser.frequencyBinCount);
+        rtAnalyser.getFloatFrequencyData(freqData);  // dB values
+
+        // Simple mel-scale-ish mapping to SPEC_SIZE bins
+        const melBins = new Float32Array(SPEC_SIZE);
+        for (let i = 0; i < SPEC_SIZE; i++) {
+            // Mel-scale approximation: lower bins spread more
+            const melIdx = Math.pow(i / SPEC_SIZE, 1.5) * freqData.length * 0.5;
+            const bin = Math.floor(melIdx);
+            // Normalize: getFloatFrequencyData returns dB, typically -100 to 0
+            melBins[i] = Math.max(0, Math.min(1, (freqData[bin] + 100) / 100));
+        }
+
+        // Shift buffer left (time axis), add new column on right
+        rtSpectrogramBuffer.copyWithin(0, SPEC_SIZE);
+        rtSpectrogramBuffer.set(melBins, (SPEC_SIZE - 1) * SPEC_SIZE);
+
+        // Create image with freq (y) vs time (x), low freq at bottom
+        const img = new Float32Array(SPEC_SIZE * SPEC_SIZE);
+        for (let t = 0; t < SPEC_SIZE; t++) {
+            for (let f = 0; f < SPEC_SIZE; f++) {
+                // Flip vertically so low freq at bottom
+                img[(SPEC_SIZE - 1 - f) * SPEC_SIZE + t] = rtSpectrogramBuffer[t * SPEC_SIZE + f];
+            }
+        }
+        return img;
+    }
+
+    // -----------------------------------------------------------------------
+    // Rendering
+    // -----------------------------------------------------------------------
+    function renderSpectrogramCanvas(specImg) {
+        if (!rtSpecCtx || !specImg) return;
+
+        const displayW = rtSpecCanvas.width;
+        const displayH = rtSpecCanvas.height;
+        const imageData = rtSpecCtx.createImageData(displayW, displayH);
+        const scaleX = displayW / SPEC_SIZE;
+        const scaleY = displayH / SPEC_SIZE;
+
+        for (let y = 0; y < displayH; y++) {
+            for (let x = 0; x < displayW; x++) {
+                const srcX = Math.floor(x / scaleX);
+                const srcY = Math.floor(y / scaleY);
+                const srcIdx = srcY * SPEC_SIZE + srcX;
+                const dstIdx = (y * displayW + x) * 4;
+
+                // Viridis-ish colormap
+                const v = specImg[srcIdx];
+                imageData.data[dstIdx]     = Math.floor(v * 100 + (1 - v) * 68);   // R
+                imageData.data[dstIdx + 1] = Math.floor(v * 220 + (1 - v) * 1);    // G
+                imageData.data[dstIdx + 2] = Math.floor(v * 150 + (1 - v) * 84);   // B
+                imageData.data[dstIdx + 3] = 255;
+            }
+        }
+        rtSpecCtx.putImageData(imageData, 0, 0);
+    }
+
+    function renderRtNcaCanvas() {
+        if (!rtNcaCtx || !rtNcaFrame) return;
+
+        const displayW = rtNcaCanvas.width;
+        const displayH = rtNcaCanvas.height;
+        const imageData = rtNcaCtx.createImageData(displayW, displayH);
+        const scaleX = displayW / rtWidth;
+        const scaleY = displayH / rtHeight;
+
+        for (let y = 0; y < displayH; y++) {
+            for (let x = 0; x < displayW; x++) {
+                const srcX = Math.floor(x / scaleX);
+                const srcY = Math.floor(y / scaleY);
+                const dstIdx = (y * displayW + x) * 4;
+
+                for (let c = 0; c < rtChannels; c++) {
+                    const srcIdx = c * rtHeight * rtWidth + srcY * rtWidth + srcX;
+                    const val = Math.min(255, Math.max(0, Math.round(rtNcaFrame[srcIdx] * 255)));
+                    imageData.data[dstIdx + c] = val;
+                }
+                if (rtChannels === 1) {
+                    imageData.data[dstIdx + 1] = imageData.data[dstIdx];
+                    imageData.data[dstIdx + 2] = imageData.data[dstIdx];
+                }
+                imageData.data[dstIdx + 3] = 255;
+            }
+        }
+        rtNcaCtx.putImageData(imageData, 0, 0);
+    }
+
+    // -----------------------------------------------------------------------
+    // ONNX Inference
+    // -----------------------------------------------------------------------
+    let rtProjectionSession = null;
+
+    async function rtLoadModels(useRtDecoder, useProjection) {
+        rtEncodeSession = await ort.InferenceSession.create('onnx/encode.onnx');
+        // Use separate realtime decoder if available, otherwise fall back to main decoder
+        const decoderPath = useRtDecoder ? 'onnx/rt_decode_latent.onnx' : 'onnx/decode_latent.onnx';
+        rtDecodeSession = await ort.InferenceSession.create(decoderPath);
+        rtNcaSession = await ort.InferenceSession.create('onnx/nca_step.onnx');
+        // Load projection if available
+        if (useProjection) {
+            rtProjectionSession = await ort.InferenceSession.create('onnx/projection.onnx');
+        }
+    }
+
+    async function rtEncodeAndUpdateWeights(specImg) {
+        // Build input tensor: tile single-channel spec to match encoder input channels
+        const input = new Float32Array(rtEncoderInputChannels * rtHeight * rtWidth);
+        for (let c = 0; c < rtEncoderInputChannels; c++) {
+            for (let y = 0; y < rtHeight; y++) {
+                for (let x = 0; x < rtWidth; x++) {
+                    // Map SPEC_SIZE -> rtWidth/rtHeight
+                    const srcY = Math.floor(y * SPEC_SIZE / rtHeight);
+                    const srcX = Math.floor(x * SPEC_SIZE / rtWidth);
+                    input[c * rtHeight * rtWidth + y * rtWidth + x] = specImg[srcY * SPEC_SIZE + srcX];
+                }
+            }
+        }
+
+        const tensor = new ort.Tensor('float32', input, [1, rtEncoderInputChannels, rtHeight, rtWidth]);
+        const encResult = await rtEncodeSession.run({ spectrogram: tensor });
+        let z = encResult.z.data;
+
+        // Apply projection if available (maps encoder latent to decoder latent space)
+        if (rtProjectionSession) {
+            const zSrcTensor = new ort.Tensor('float32', z, [1, rtLatentDim]);
+            const projResult = await rtProjectionSession.run({ z_source: zSrcTensor });
+            z = projResult.z_target.data;
+        }
+
+        // Decode z -> NCA weights (but NOT grid - grid is preserved)
+        // Note: if projection was used, z is now in target latent space
+        const decoderLatentDim = rtProjectionSession ? z.length : rtLatentDim;
+        const zTensor = new ort.Tensor('float32', z, [1, decoderLatentDim]);
+        const decResult = await rtDecodeSession.run({ z: zTensor });
+
+        // Update cached params ONLY (grid state preserved)
+        rtCachedParams = {
+            layer1_w: decResult.layer1_w,
+            layer1_b: decResult.layer1_b,
+            layer2_w: decResult.layer2_w,
+            layer2_b: decResult.layer2_b,
+        };
+        // Note: decResult.first_frame is ignored - we don't reset the grid
+    }
+
+    async function rtStepNca() {
+        if (!rtCachedParams || !rtGrid) return;
+
+        const gridSize = rtGridChannels * rtHeight * rtWidth;
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = gridSize - imgSize;
+
+        // Build grid from current state
+        const grid = new Float32Array(gridSize);
+        grid.set(rtNcaFrame);
+        grid.set(rtHidden, imgSize);
+
+        // Run one NCA step
+        const gridTensor = new ort.Tensor('float32', grid, [1, rtGridChannels, rtHeight, rtWidth]);
+        const out = await rtNcaSession.run({
+            grid: gridTensor,
+            layer1_w: rtCachedParams.layer1_w,
+            layer1_b: rtCachedParams.layer1_b,
+            layer2_w: rtCachedParams.layer2_w,
+            layer2_b: rtCachedParams.layer2_b,
+        });
+
+        // Squash (matches training)
+        const raw = out.new_grid.data;
+        for (let i = 0; i < imgSize; i++) {
+            rtNcaFrame[i] = sigmoid(raw[i]);
+        }
+        for (let i = 0; i < hiddenSize; i++) {
+            rtHidden[i] = Math.tanh(raw[imgSize + i]);
+        }
+    }
+
+    function rtRandomizeGrid() {
+        // Fill grid with random noise (keeps current z and NCA weights)
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = rtGridChannels * rtHeight * rtWidth - imgSize;
+
+        // Random RGB values in [0, 1]
+        if (!rtNcaFrame) rtNcaFrame = new Float32Array(imgSize);
+        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = Math.random();
+
+        // Random hidden values (small, like tanh range)
+        if (!rtHidden) rtHidden = new Float32Array(hiddenSize);
+        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = (Math.random() - 0.5) * 0.2;
+
+        // Set rtGrid flag so rtStepNca knows grid is initialized
+        rtGrid = true;
+    }
+
+    async function rtInitGrid() {
+        // Initialize from random z (used on first enable)
+        const z = new Float32Array(rtLatentDim);
+        for (let i = 0; i < rtLatentDim; i++) z[i] = randn() * 0.5;
+
+        const zTensor = new ort.Tensor('float32', z, [1, rtLatentDim]);
+        const result = await rtDecodeSession.run({ z: zTensor });
+
+        const gridSize = rtGridChannels * rtHeight * rtWidth;
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = gridSize - imgSize;
+
+        rtGrid = new Float32Array(result.first_frame.data);
+        rtCachedParams = {
+            layer1_w: result.layer1_w,
+            layer1_b: result.layer1_b,
+            layer2_w: result.layer2_w,
+            layer2_b: result.layer2_b,
+        };
+
+        rtNcaFrame = new Float32Array(imgSize);
+        rtHidden = new Float32Array(hiddenSize);
+        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = rtGrid[i];
+        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = rtGrid[imgSize + i];
+    }
+
+    // -----------------------------------------------------------------------
+    // Main Loop
+    // -----------------------------------------------------------------------
+    async function rtMicrophoneLoop() {
+        if (!rtRunning || !rtAnalyser) return;
+
+        const specImg = computeSpectrogram();
+        if (specImg) {
+            renderSpectrogramCanvas(specImg);
+
+            const now = performance.now();
+            if (now - rtLastEncoderRun > rtEncoderThrottleMs) {
+                await rtEncodeAndUpdateWeights(specImg);
+                rtLastEncoderRun = now;
+            }
+        }
+
+        // Run NCA step with current (possibly just-updated) params
+        if (rtCachedParams && rtNcaFrame) {
+            await rtStepNca();
+        }
+
+        renderRtNcaCanvas();
+        requestAnimationFrame(rtMicrophoneLoop);
+    }
+
+    // -----------------------------------------------------------------------
+    // UI Event Handlers
+    // -----------------------------------------------------------------------
+    const rtEnableMicBtn = document.getElementById('rtEnableMicBtn');
+    const rtResetGridBtn = document.getElementById('rtResetGridBtn');
+    const rtMicStatus = document.getElementById('rtMicStatus');
+
+    if (rtEnableMicBtn) {
+        rtEnableMicBtn.addEventListener('click', async () => {
+            if (rtRunning) {
+                // Stop
+                rtRunning = false;
+                if (rtAudioContext) {
+                    rtAudioContext.close();
+                    rtAudioContext = null;
+                    rtAnalyser = null;
+                }
+                rtEnableMicBtn.textContent = 'Enable Microphone';
+                rtEnableMicBtn.classList.remove('active');
+                rtMicStatus.textContent = '';
+                rtResetGridBtn.disabled = true;
+                return;
+            }
+
+            rtEnableMicBtn.disabled = true;
+            rtMicStatus.textContent = 'Loading...';
+
+            try {
+                // Load manifest if not already loaded
+                if (!rtManifest) {
+                    const resp = await fetch('data/manifest.json');
+                    rtManifest = await resp.json();
+                    rtWidth = rtManifest.width;
+                    rtHeight = rtManifest.height;
+                    rtChannels = rtManifest.channels;
+                    rtLatentDim = rtManifest.latent_dim;
+                    rtGridChannels = rtManifest.grid_channels;
+                    rtNumSteps = rtManifest.num_steps;
+                    rtEncoderInputChannels = rtManifest.encoder_input_channels || (rtManifest.context_frames * rtChannels);
+                }
+
+                // Load models if not already loaded
+                if (!rtEncodeSession) {
+                    rtMicStatus.textContent = 'Loading models...';
+                    const useRtDecoder = rtManifest.rt_decoder_available || false;
+                    const useProjection = rtManifest.projection_available || false;
+                    await rtLoadModels(useRtDecoder, useProjection);
+                }
+
+                // Init microphone
+                rtMicStatus.textContent = 'Requesting mic...';
+                const ok = await initMicrophone();
+                if (!ok) {
+                    rtMicStatus.textContent = 'Mic access denied';
+                    rtMicStatus.classList.add('error');
+                    rtEnableMicBtn.disabled = false;
+                    return;
+                }
+
+                // Init grid if not already
+                if (!rtGrid) {
+                    rtMicStatus.textContent = 'Initializing grid...';
+                    await rtInitGrid();
+                }
+
+                rtRunning = true;
+                rtEnableMicBtn.textContent = 'Disable Microphone';
+                rtEnableMicBtn.classList.add('active');
+                rtMicStatus.textContent = 'Active';
+                rtMicStatus.classList.remove('error');
+                rtResetGridBtn.disabled = false;
+
+                rtMicrophoneLoop();
+            } catch (e) {
+                console.error('RT Audio init error:', e);
+                rtMicStatus.textContent = 'Error: ' + e.message;
+                rtMicStatus.classList.add('error');
+            }
+
+            rtEnableMicBtn.disabled = false;
+        });
+    }
+
+    if (rtResetGridBtn) {
+        rtResetGridBtn.addEventListener('click', () => {
+            if (!rtNcaFrame) return;
+            rtRandomizeGrid();
+        });
+    }
+
+    // Sample rate slider
+    const rtSampleRateSlider = document.getElementById('rtSampleRateSlider');
+    const rtSampleRateValue = document.getElementById('rtSampleRateValue');
+    if (rtSampleRateSlider) {
+        rtSampleRateSlider.addEventListener('input', () => {
+            rtEncoderThrottleMs = parseInt(rtSampleRateSlider.value);
+            rtSampleRateValue.textContent = rtEncoderThrottleMs + 'ms';
+        });
+    }
+
     })();
     </script>
 </body>
