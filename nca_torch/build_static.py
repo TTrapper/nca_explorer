@@ -687,6 +687,40 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         </div>
 """
 
+    # Realtime audio demo HTML - can be injected via <!-- REALTIME_DEMO --> marker
+    realtime_demo_html = """
+        <div class="rt-section" id="realtimeAudioSection">
+            <h2>Real-Time Audio</h2>
+            <p class="rt-subtitle">Drive NCA dynamics with your microphone. Audio updates the NCA rules while the grid continues evolving.</p>
+
+            <div class="rt-container">
+                <div class="rt-displays">
+                    <div class="rt-display">
+                        <canvas id="rtSpecCanvas" width="256" height="256"></canvas>
+                        <div class="label">Live Spectrogram</div>
+                    </div>
+                    <div class="rt-display">
+                        <canvas id="rtNcaCanvas" width="256" height="256"></canvas>
+                        <div class="label">NCA Output</div>
+                    </div>
+                </div>
+
+                <div class="rt-controls">
+                    <button id="rtEnableMicBtn">Enable Microphone</button>
+                    <button id="rtResetGridBtn" disabled>Reset Grid</button>
+                    <span id="rtMicStatus"></span>
+                </div>
+            </div>
+        </div>
+"""
+
+    # Replace marker in article or append at end
+    if "<!-- REALTIME_DEMO -->" in article_html:
+        article_html_with_demo = article_html.replace("<!-- REALTIME_DEMO -->", realtime_demo_html)
+    else:
+        # Fallback: append after article
+        article_html_with_demo = article_html + realtime_demo_html
+
     return f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -1104,31 +1138,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
         <div class="article">
             <hr>
-            {article_html}
-        </div>
-
-        <div class="rt-section" id="realtimeAudioSection">
-            <h2>Real-Time Audio</h2>
-            <p class="rt-subtitle">Drive NCA dynamics with your microphone. Audio updates the NCA rules while the grid continues evolving.</p>
-
-            <div class="rt-container">
-                <div class="rt-displays">
-                    <div class="rt-display">
-                        <canvas id="rtSpecCanvas" width="256" height="256"></canvas>
-                        <div class="label">Live Spectrogram</div>
-                    </div>
-                    <div class="rt-display">
-                        <canvas id="rtNcaCanvas" width="256" height="256"></canvas>
-                        <div class="label">NCA Output</div>
-                    </div>
-                </div>
-
-                <div class="rt-controls">
-                    <button id="rtEnableMicBtn">Enable Microphone</button>
-                    <button id="rtResetGridBtn" disabled>Reset Grid</button>
-                    <span id="rtMicStatus"></span>
-                </div>
-            </div>
+            {article_html_with_demo}
         </div>
     </div>
 

@@ -31,6 +31,21 @@ This got me thinking about the embeddings space of NCA parameters, and how we co
 
 In this way, I've ended up with a neural network that generates neural networks from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the embedding space, which is very fun.
 
+## Cellular Automata
+
+Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.
+
+Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood and the 1 center cell's new state ,which gives us 2^10 (1024) entries per rule. Each entry maps the 9-cell states at time *t* to the center cell's state at time *t+1*. The rule is then convolved over the entire grid to get the new state at each time step.
+
+![Rainbow Gliders|512x512](assets/rainbow_gliders.gif)
+
+**Neural Cellular Automata (NCA)** replace the discrete update rules of CAs with a small neural network, allowing the system to learn its own dynamics from data. A neural network reads local values and outputs updated values for the next time step, which is fed back into the network at time *t+1*. This makes an NCA effectively a recurrent CNN! NCAs can learn to grow, regenerate, and sustain surprisingly complex dynamical patterns.
+
+The space of all possible NCAs is infinite, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).
+
+
+---
+
 ## Hardware Constraints
 
 I landed on the following architecture, which is extremely tiny because I want this to run in realtime in the browser on a CPU, and I needed a fast turn-around time for experiments.
@@ -57,22 +72,14 @@ I landed on the following architecture, which is extremely tiny because I want t
 - Layer 2: 16→16 channels, 3×3 conv, circular padding, residual add
 - Parameters generated per-sample by HyperNetwork
 
----
-
-## Cellular Automata
-
-Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.
-
-Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood and the 1 center cell's new state ,which gives us 2^10 (1024) entries per rule. Each entry maps the 9-cell states at time *t* to the center cell's state at time *t+1*. The rule is then convolved over the entire grid to get the new state at each time step.
-
-![Rainbow Gliders|512x512](assets/rainbow_gliders.gif)
-
-**Neural Cellular Automata (NCA)** replace the discrete update rules of CAs with a small neural network, allowing the system to learn its own dynamics from data. A neural network reads local values and outputs updated values for the next time step, which is fed back into the network at time *t+1*. This makes an NCA effectively a recurrent CNN! NCAs can learn to grow, regenerate, and sustain surprisingly complex dynamical patterns.
-
-The space of all possible NCAs is infinite, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).
-
 
 ---
+
+## Realtime Exploration
+
+<!-- REALTIME_DEMO -->                                                                                                                                                                                           
+---
+
 
 ## Learned Latent Space
 
