@@ -252,8 +252,10 @@ class DynamicsTrainer:
 
             # Grid swap: corrupt initial grid with pixels from other batch examples
             # Teaches NCA to recover from "foreign" initial state
+            # Probability scales linearly with num_steps (0 at step 1, full at max_num_steps)
             if self.args.grid_swap_prob > 0 and B > 1:
-                mask = torch.rand(B, 1, H, W, device=self.device) < self.args.grid_swap_prob
+                scaled_prob = self.args.grid_swap_prob * (self.current_num_steps / self.args.max_num_steps)
+                mask = torch.rand(B, 1, H, W, device=self.device) < scaled_prob
                 perm = torch.randperm(B, device=self.device)
                 foreign_grid = grid[perm]
                 grid = torch.where(mask, foreign_grid, grid)
@@ -589,7 +591,7 @@ class DynamicsTrainer:
             print(f"NCA steps schedule: 1 → {self.args.max_num_steps} (+1 each epoch)")
         print(f"Detach steps: {self.args.detach_steps}")
         print(f"Last step only: {self.args.last_step_only}")
-        print(f"Grid swap prob: {self.args.grid_swap_prob}")
+        print(f"Grid swap prob: 0 → {self.args.grid_swap_prob} (scales with num_steps)")
         print(f"Max future frames: {self.max_future_frames} (sequence warmup: 1 → max)")
         print(f"First frame: FirstFrameDecoder, dynamics: NCA (up to {self.args.max_num_steps} steps)")
         print(f"Loss weights: recon={self.args.recon_weight}, kl={self.args.kl_weight}", end="")
