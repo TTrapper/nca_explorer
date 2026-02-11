@@ -284,7 +284,7 @@ class NCAStepExport(nn.Module):
         return grid + update
 
 
-class ProjectionExport(nn.Module):
+class LinearProjectionExport(nn.Module):
     """Linear projection from source to target latent space."""
 
     def __init__(self, in_dim: int, out_dim: int, state_dict: dict):
@@ -297,14 +297,45 @@ class ProjectionExport(nn.Module):
         return self.linear(z)
 
 
+class MLPProjectionExport(nn.Module):
+    """MLP projection from source to target latent space."""
+
+    def __init__(self, in_dim: int, out_dim: int, hidden_dim: int, state_dict: dict):
+        super().__init__()
+        self.net = nn.Sequential(
+            nn.Linear(in_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, hidden_dim),
+            nn.LayerNorm(hidden_dim),
+            nn.ReLU(),
+            nn.Linear(hidden_dim, out_dim),
+        )
+        # State dict has "net.0.weight" etc
+        self.load_state_dict(state_dict)
+
+    def forward(self, z):
+        return self.net(z)
+
+
 def load_projection(projection_path: str, device: torch.device):
     """Load projection checkpoint and return wrapper for ONNX export."""
     ckpt = torch.load(projection_path, map_location=device, weights_only=False)
     in_dim = ckpt["source_latent_dim"]
     out_dim = ckpt["target_latent_dim"]
     state_dict = ckpt["projection_state_dict"]
+    mode = ckpt.get("mode", "distribution")
 
-    wrapper = ProjectionExport(in_dim, out_dim, state_dict)
+    if mode == "ot":
+        # MLP projection - infer hidden dim from state dict
+        hidden_dim = state_dict["net.0.weight"].shape[0]
+        print(f"    MLP projection (hidden={hidden_dim})")
+        wrapper = MLPProjectionExport(in_dim, out_dim, hidden_dim, state_dict)
+    else:
+        # Linear projection
+        print(f"    Linear projection")
+        wrapper = LinearProjectionExport(in_dim, out_dim, state_dict)
+
     wrapper.eval()
     return wrapper, in_dim, out_dim
 
