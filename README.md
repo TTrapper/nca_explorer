@@ -81,22 +81,7 @@ I landed on the following architecture, which is extremely tiny because I want t
 - Layer 2: 16→16 channels, 3×3 conv, circular padding, residual add
 - Parameters generated per-sample by HyperNetwork
 
-
 ---
-
-## Realtime Exploration
-
-This demo combines two separately trained models:
-
-- **Encoder:** From the spectrogram-to-NCA model used in the piano demo above
-- **Hypernetwork:** From a new model trained to generate emoji (or rather to *generate NCAs* which generate emoji
-
-The idea is to explore whether we can use music and sound to navigate the space of possible NCAs, even when the hypernetwork wasn't jointly trained with spectrograms. Your microphone audio gets converted to a spectrogram, encoded to a latent vector, and that latent drives the emoji NCA's dynamics in real-time.
-
-<!-- REALTIME_DEMO -->
-
----
-
 
 ## Learned Latent Space
 
@@ -137,6 +122,30 @@ The first frame of each training sequence is a **mel spectrogram** (a 2D image o
 ![Ground Truth Example 3|512x256](assets/spectrogram_clarinet.gif)
 
 For the piano interface, we pre-generate spectrograms for all 19 notes (F4 through B5) across every instrument. Each spectrogram is encoded into its latent vector and stored in a manifest. When you press a piano key, the corresponding latent is loaded; pressing multiple keys (a chord) averages their latents together. This blended latent then generates the NCA in real-time, creating visualizations that interpolate between the learned behaviors of each note.
+
+---
+
+## Realtime Exploration
+
+This demo combines two separately trained models:
+
+- **Encoder:** From the spectrogram-to-NCA model used in the piano demo above
+- **Hypernetwork:** From a new model trained to generate emoji (or rather to *generate NCAs* which generate emoji
+
+The idea is to explore whether we can use music and sound to navigate the space of possible NCAs, even when the hypernetwork wasn't jointly trained with spectrograms. Your microphone audio gets converted to a spectrogram, encoded to a latent vector, and that latent drives the emoji NCA's dynamics in real-time.
+
+<!-- REALTIME_DEMO -->
+
+You're unlikely to find any recognizable emoji in the above demo. The spectrogram encoder's latent space doesn't match what the emoji hypernetwork expects. In the future, I'd like to try aligning the two embedding spaces and see if we can produce actual images from the music!
+
+Still, what makes this interesting is that we're navigating a structured region of NCA parameter space. The hypernetwork constrains the outputs to "plausible" cellular automata, and the audio encoder provides a consistent way to explore that space. Different sounds produce different dynamics, and you can discover regularities. For example, cleaner pure tones tend to make more stable structures where as disonance and noise result in more chaotic patterns!
+
+
+For reference, here's what the hypernetwork (and its generated NCAs) produces with its matching encoder:
+
+![Emoji NCA 1\|256x128](assets/emoji1.gif)
+![Emoji NCA 2\|256x128](assets/emoji2.gif)
+![Emoji NCA 3\|256x128](assets/emoji3.gif)
 
 ---
 
