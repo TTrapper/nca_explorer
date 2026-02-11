@@ -792,11 +792,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                     <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="500" style="width: 120px;">
                     <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">500ms</span>
                 </div>
-                <div class="rt-controls" style="margin-top: 10px;">
-                    <label for="rtLatentScaleSlider" style="color: #aaa; font-size: 0.9em;">Latent Scale:</label>
-                    <input type="range" id="rtLatentScaleSlider" min="0.5" max="100" step="0.5" value="1" style="width: 120px;">
-                    <span id="rtLatentScaleValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">1.0x</span>
-                </div>
             </div>
         </div>
 """
@@ -2120,7 +2115,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     // Timing
     let rtLastEncoderRun = 0;
     let rtEncoderThrottleMs = 500;  // Updated by slider
-    let rtLatentScale = 1.0;  // Updated by slider
     let rtRunning = false;
 
     // Canvas refs
@@ -2291,12 +2285,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             z = projResult.z_target.data;
         }}
 
-        // Apply latent scale (expands narrow encoder distribution)
-        if (rtLatentScale !== 1.0) {{
-            for (let i = 0; i < z.length; i++) {{
-                z[i] *= rtLatentScale;
-            }}
-        }}
 
         // Decode z -> NCA weights (but NOT grid - grid is preserved)
         // Note: if projection was used, z is now in target latent space
@@ -2516,15 +2504,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         }});
     }}
 
-    // Latent scale slider
-    const rtLatentScaleSlider = document.getElementById('rtLatentScaleSlider');
-    const rtLatentScaleValueEl = document.getElementById('rtLatentScaleValue');
-    if (rtLatentScaleSlider) {{
-        rtLatentScaleSlider.addEventListener('input', () => {{
-            rtLatentScale = parseFloat(rtLatentScaleSlider.value);
-            rtLatentScaleValueEl.textContent = rtLatentScale.toFixed(1) + 'x';
-        }});
-    }}
 
     }})();
     </script>
