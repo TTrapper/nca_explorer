@@ -710,6 +710,11 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                     <button id="rtResetGridBtn" disabled>Reset Grid</button>
                     <span id="rtMicStatus"></span>
                 </div>
+                <div class="rt-controls" style="margin-top: 10px;">
+                    <label for="rtSampleRateSlider" style="color: #aaa; font-size: 0.9em;">Sample Rate:</label>
+                    <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="500" style="width: 120px;">
+                    <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">500ms</span>
+                </div>
             </div>
         </div>
 """
@@ -2035,7 +2040,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
     // Timing
     let rtLastEncoderRun = 0;
-    const ENCODER_THROTTLE_MS = 100;  // ~10fps for encoder
+    let rtEncoderThrottleMs = 500;  // Updated by slider
     let rtRunning = false;
 
     // Canvas refs
@@ -2283,7 +2288,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             renderSpectrogramCanvas(specImg);
 
             const now = performance.now();
-            if (now - rtLastEncoderRun > ENCODER_THROTTLE_MS) {{
+            if (now - rtLastEncoderRun > rtEncoderThrottleMs) {{
                 await rtEncodeAndUpdateWeights(specImg);
                 rtLastEncoderRun = now;
             }}
@@ -2386,6 +2391,16 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             rtResetGridBtn.disabled = true;
             await rtInitGrid();
             rtResetGridBtn.disabled = !rtRunning;
+        }});
+    }}
+
+    // Sample rate slider
+    const rtSampleRateSlider = document.getElementById('rtSampleRateSlider');
+    const rtSampleRateValue = document.getElementById('rtSampleRateValue');
+    if (rtSampleRateSlider) {{
+        rtSampleRateSlider.addEventListener('input', () => {{
+            rtEncoderThrottleMs = parseInt(rtSampleRateSlider.value);
+            rtSampleRateValue.textContent = rtEncoderThrottleMs + 'ms';
         }});
     }}
 
