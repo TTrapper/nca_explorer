@@ -768,7 +768,6 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     # Realtime audio demo HTML - can be injected via <!-- REALTIME_DEMO --> marker
     realtime_demo_html = """
         <div class="rt-section" id="realtimeAudioSection">
-            <h2>Real-Time Audio</h2>
             <p class="rt-subtitle">Try making sounds with different textures: humming, clapping, whistling, or playing different instruments. Each sound creates a unique spectrogram that drives the NCA dynamics.</p>
 
             <div class="rt-container">
@@ -789,7 +788,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                 </div>
                 <div class="rt-controls" style="margin-top: 10px;">
                     <label for="rtSampleRateSlider" style="color: #aaa; font-size: 0.9em;">Sample Rate:</label>
-                    <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="500" style="width: 120px;">
+                    <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="1500" style="width: 120px;">
                     <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">500ms</span>
                 </div>
             </div>
@@ -2114,7 +2113,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
     // Timing
     let rtLastEncoderRun = 0;
-    let rtEncoderThrottleMs = 500;  // Updated by slider
+    let rtEncoderThrottleMs = 1500;  // Updated by slider
     let rtRunning = false;
 
     // Canvas refs
