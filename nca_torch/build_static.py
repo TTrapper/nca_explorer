@@ -1924,8 +1924,15 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
             const workerScript = await ensureGifWorker();
             gifIncludeSpectrogram = hasSpectrogram();
-            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
-            const gifWidth = sideBySide ? gifSize * 2 : gifSize;
+            // Sequence mode: context + NCA + GT (3 panels)
+            // Spectrogram mode: spec + NCA (2 panels)
+            // Free mode: NCA only (1 panel)
+            let gifWidth = gifSize;
+            if (currentMode === 'sequence') {{
+                gifWidth = gifSize * 3;  // context | NCA | GT
+            }} else if (gifIncludeSpectrogram) {{
+                gifWidth = gifSize * 2;
+            }}
             gifEncoder = new GIF({{
                 workers: 2,
                 quality: 10,
@@ -1941,14 +1948,24 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         captureGifFrame = function() {{
             if (!isRecording || !gifEncoder) return;
             const offscreen = document.createElement('canvas');
-            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
-            offscreen.width = sideBySide ? gifSize * 2 : gifSize;
+            let gifWidth = gifSize;
+            if (currentMode === 'sequence') {{
+                gifWidth = gifSize * 3;
+            }} else if (gifIncludeSpectrogram) {{
+                gifWidth = gifSize * 2;
+            }}
+            offscreen.width = gifWidth;
             offscreen.height = gifSize;
             const octx = offscreen.getContext('2d');
 
             if (currentMode === 'sequence') {{
-                octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
-                octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
+                // Draw last context frame on the left
+                const lastContextCanvas = contextCanvases[contextCanvases.length - 1];
+                if (lastContextCanvas) {{
+                    octx.drawImage(lastContextCanvas, 0, 0, gifSize, gifSize);
+                }}
+                octx.drawImage(ncaCanvas, gifSize, 0, gifSize, gifSize);
+                octx.drawImage(gtCanvas, gifSize * 2, 0, gifSize, gifSize);
             }} else if (gifIncludeSpectrogram) {{
                 const specImg = document.getElementById('specImg');
                 octx.drawImage(specImg, 0, 0, gifSize, gifSize);
