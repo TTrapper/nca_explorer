@@ -789,7 +789,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                 <div class="rt-controls" style="margin-top: 10px;">
                     <label for="rtSampleRateSlider" style="color: #aaa; font-size: 0.9em;">Sample Rate:</label>
                     <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="1500" style="width: 120px;">
-                    <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">500ms</span>
+                    <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">1500ms</span>
                 </div>
             </div>
         </div>
