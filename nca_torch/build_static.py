@@ -2303,15 +2303,31 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
         }}
     }}
 
+    function rtRandomizeGrid() {{
+        // Fill grid with random noise (keeps current z and NCA weights)
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = rtGridChannels * rtHeight * rtWidth - imgSize;
+
+        // Random RGB values in [0, 1]
+        if (!rtNcaFrame) rtNcaFrame = new Float32Array(imgSize);
+        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = Math.random();
+
+        // Random hidden values (small, like tanh range)
+        if (!rtHidden) rtHidden = new Float32Array(hiddenSize);
+        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = (Math.random() - 0.5) * 0.2;
+
+        // Set rtGrid flag so rtStepNca knows grid is initialized
+        rtGrid = true;
+    }}
+
     async function rtInitGrid() {{
-        // Initialize with random z
+        // Initialize from random z (used on first enable)
         const z = new Float32Array(rtLatentDim);
         for (let i = 0; i < rtLatentDim; i++) z[i] = randn() * 0.5;
 
         const zTensor = new ort.Tensor('float32', z, [1, rtLatentDim]);
         const result = await rtDecodeSession.run({{ z: zTensor }});
 
-        // Store initial grid state
         const gridSize = rtGridChannels * rtHeight * rtWidth;
         const imgSize = rtChannels * rtHeight * rtWidth;
         const hiddenSize = gridSize - imgSize;
@@ -2324,16 +2340,10 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             layer2_b: result.layer2_b,
         }};
 
-        // Extract display buffers
         rtNcaFrame = new Float32Array(imgSize);
         rtHidden = new Float32Array(hiddenSize);
         for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = rtGrid[i];
         for (let i = 0; i < hiddenSize; i++) rtHidden[i] = rtGrid[imgSize + i];
-
-        // Run initial NCA steps
-        for (let s = 0; s < rtNumSteps; s++) {{
-            await rtStepNca();
-        }}
     }}
 
     // -----------------------------------------------------------------------
@@ -2446,11 +2456,9 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     }}
 
     if (rtResetGridBtn) {{
-        rtResetGridBtn.addEventListener('click', async () => {{
-            if (!rtDecodeSession) return;
-            rtResetGridBtn.disabled = true;
-            await rtInitGrid();
-            rtResetGridBtn.disabled = !rtRunning;
+        rtResetGridBtn.addEventListener('click', () => {{
+            if (!rtNcaFrame) return;
+            rtRandomizeGrid();
         }});
     }}
 
