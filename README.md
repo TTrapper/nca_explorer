@@ -21,6 +21,15 @@ Here are some examples of intersting stable patters you might find the in the sp
 | ![Lilly Pads\|256x256](assets/gallery/lillypads.gif) | ![Organic Swirl 3D\|256x256](assets/gallery/organicswirl3D.gif) | ![Paraglider\|256x256](assets/gallery/paraglider.gif) |
 | ![Rebirth\|256x256](assets/gallery/rebirth.gif) | ![Red Grid\|256x256](assets/gallery/redgrid.gif) | ![Water Channels\|256x256](assets/gallery/water_channels.gif) |
 
+
+### Random NCAs
+
+In contrast to the above NCA's sampled from a learned latent space (so that we are navigating a particularly interesting and beautiful region of NCA parameter space), most of NCA space is more boring and tends to collapse to blank or static patterns:
+
+| | | |
+|:---:|:---:|:---:|
+| ![rand1\|128x128](assets/random_nca1.gif) | ![rand2\|128x128](assets/random_nca2.gif) | ![rand3\|128x128](assets/random_nca3.gif) |
+
 ---
 
 ## Why This Project
