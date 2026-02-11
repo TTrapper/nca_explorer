@@ -2312,17 +2312,33 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             layer2_b: decResult.layer2_b,
         }};
 
-        // Reset grid to first_frame from decoder
+        // Gradually blend current grid toward new first_frame
         const gridSize = rtGridChannels * rtHeight * rtWidth;
         const imgSize = rtChannels * rtHeight * rtWidth;
         const hiddenSize = gridSize - imgSize;
 
         const firstFrame = decResult.first_frame.data;
-        if (!rtNcaFrame) rtNcaFrame = new Float32Array(imgSize);
-        if (!rtHidden) rtHidden = new Float32Array(hiddenSize);
+        const blendRate = 0.25;  // How fast to blend (0 = no change, 1 = instant)
 
-        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = firstFrame[i];
-        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = firstFrame[imgSize + i];
+        if (!rtNcaFrame) {{
+            // First time - initialize directly
+            rtNcaFrame = new Float32Array(imgSize);
+            for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = firstFrame[i];
+        }} else {{
+            // Blend toward new state
+            for (let i = 0; i < imgSize; i++) {{
+                rtNcaFrame[i] = rtNcaFrame[i] * (1 - blendRate) + firstFrame[i] * blendRate;
+            }}
+        }}
+
+        if (!rtHidden) {{
+            rtHidden = new Float32Array(hiddenSize);
+            for (let i = 0; i < hiddenSize; i++) rtHidden[i] = firstFrame[imgSize + i];
+        }} else {{
+            for (let i = 0; i < hiddenSize; i++) {{
+                rtHidden[i] = rtHidden[i] * (1 - blendRate) + firstFrame[imgSize + i] * blendRate;
+            }}
+        }}
         rtGrid = true;
     }}
 
