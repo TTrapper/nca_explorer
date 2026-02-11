@@ -77,7 +77,15 @@ I landed on the following architecture, which is extremely tiny because I want t
 
 ## Realtime Exploration
 
-<!-- REALTIME_DEMO -->                                                                                                                                                                                           
+This demo combines two separately trained models:
+
+- **Encoder:** From the spectrogram-to-NCA model used in the piano demo above
+- **Hypernetwork:** From a new model trained to generate emoji (or rather to *generate NCAs* which generate emoji
+
+The idea is to explore whether we can use music and sound to navigate the space of possible NCAs, even when the hypernetwork wasn't jointly trained with spectrograms. Your microphone audio gets converted to a spectrogram, encoded to a latent vector, and that latent drives the emoji NCA's dynamics in real-time.
+
+<!-- REALTIME_DEMO -->
+
 ---
 
 

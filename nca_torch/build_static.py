@@ -691,7 +691,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     realtime_demo_html = """
         <div class="rt-section" id="realtimeAudioSection">
             <h2>Real-Time Audio</h2>
-            <p class="rt-subtitle">Drive NCA dynamics with your microphone. Audio updates the NCA rules while the grid continues evolving.</p>
+            <p class="rt-subtitle">Try making sounds with different textures: humming, clapping, whistling, or playing different instruments. Each sound creates a unique spectrogram that drives the NCA dynamics.</p>
 
             <div class="rt-container">
                 <div class="rt-displays">
