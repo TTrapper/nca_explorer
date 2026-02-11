@@ -284,6 +284,31 @@ class NCAStepExport(nn.Module):
         return grid + update
 
 
+class ProjectionExport(nn.Module):
+    """Linear projection from source to target latent space."""
+
+    def __init__(self, in_dim: int, out_dim: int, state_dict: dict):
+        super().__init__()
+        self.linear = nn.Linear(in_dim, out_dim)
+        # State dict has "linear.weight" etc, so load into self (not self.linear)
+        self.load_state_dict(state_dict)
+
+    def forward(self, z):
+        return self.linear(z)
+
+
+def load_projection(projection_path: str, device: torch.device):
+    """Load projection checkpoint and return wrapper for ONNX export."""
+    ckpt = torch.load(projection_path, map_location=device, weights_only=False)
+    in_dim = ckpt["source_latent_dim"]
+    out_dim = ckpt["target_latent_dim"]
+    state_dict = ckpt["projection_state_dict"]
+
+    wrapper = ProjectionExport(in_dim, out_dim, state_dict)
+    wrapper.eval()
+    return wrapper, in_dim, out_dim
+
+
 # ---------------------------------------------------------------------------
 # Spectrogram loading helpers
 # ---------------------------------------------------------------------------
@@ -459,7 +484,7 @@ def encode_sequences(model, dataset, cfg, device, max_sequences: int = 0):
     return latents
 
 
-def export_onnx_models(model, cfg, device, output_dir: Path, realtime_model=None):
+def export_onnx_models(model, cfg, device, output_dir: Path, realtime_model=None, projection_info=None):
     """Export ONNX wrapper models.
 
     Args:
@@ -468,6 +493,7 @@ def export_onnx_models(model, cfg, device, output_dir: Path, realtime_model=None
         device: torch device
         output_dir: Output directory
         realtime_model: Optional second model whose decoder is used for realtime audio
+        projection_info: Optional tuple of (projection_wrapper, source_dim, target_dim)
     """
     onnx_dir = output_dir / "onnx"
     onnx_dir.mkdir(parents=True, exist_ok=True)
@@ -549,10 +575,29 @@ def export_onnx_models(model, cfg, device, output_dir: Path, realtime_model=None
     )
     print(f"Exported {encode_path} ({encode_path.stat().st_size / 1024:.0f} KB)")
 
-    return realtime_model is not None  # Return whether realtime decoder was exported
+    # --- Projection (optional) ---
+    has_projection = False
+    if projection_info is not None:
+        projection_wrapper, source_dim, target_dim = projection_info
+        dummy_z_src = torch.randn(1, source_dim, device=device)
+
+        projection_path = onnx_dir / "projection.onnx"
+        torch.onnx.export(
+            projection_wrapper,
+            (dummy_z_src,),
+            str(projection_path),
+            input_names=["z_source"],
+            output_names=["z_target"],
+            dynamic_axes=None,
+            opset_version=17,
+        )
+        print(f"Exported {projection_path} ({projection_path.stat().st_size / 1024:.0f} KB)")
+        has_projection = True
+
+    return realtime_model is not None, has_projection
 
 
-def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, max_sequences: int = 0, has_rt_decoder: bool = False):
+def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, max_sequences: int = 0, has_rt_decoder: bool = False, has_projection: bool = False):
     """Write sequence .bin files and manifest.json."""
     data_dir = output_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -590,6 +635,7 @@ def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, 
         "encoder_input_channels": cfg["in_channels"] * cfg["context_frames"],
         "encoder_available": True,
         "rt_decoder_available": has_rt_decoder,
+        "projection_available": has_projection,
         "sequences": sequences_meta,
         "instrument_embeddings": instrument_embeddings,
     }
@@ -600,7 +646,7 @@ def export_data(dataset, latents, instrument_embeddings, cfg, output_dir: Path, 
     print(f"Wrote manifest.json ({manifest_path.stat().st_size / 1024:.0f} KB)")
 
 
-def export_data_github_pages(instrument_embeddings, cfg, output_dir: Path, has_rt_decoder: bool = False):
+def export_data_github_pages(instrument_embeddings, cfg, output_dir: Path, has_rt_decoder: bool = False, has_projection: bool = False):
     """Write minimal manifest.json for GitHub Pages (no sequences)."""
     data_dir = output_dir / "data"
     data_dir.mkdir(parents=True, exist_ok=True)
@@ -620,6 +666,7 @@ def export_data_github_pages(instrument_embeddings, cfg, output_dir: Path, has_r
         "encoder_input_channels": cfg["in_channels"] * cfg["context_frames"],
         "encoder_available": True,
         "rt_decoder_available": has_rt_decoder,
+        "projection_available": has_projection,
         "sequences": [],
         "instrument_embeddings": instrument_embeddings,
     }
@@ -2169,12 +2216,18 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     // -----------------------------------------------------------------------
     // ONNX Inference
     // -----------------------------------------------------------------------
-    async function rtLoadModels(useRtDecoder) {{
+    let rtProjectionSession = null;
+
+    async function rtLoadModels(useRtDecoder, useProjection) {{
         rtEncodeSession = await ort.InferenceSession.create('onnx/encode.onnx');
         // Use separate realtime decoder if available, otherwise fall back to main decoder
         const decoderPath = useRtDecoder ? 'onnx/rt_decode_latent.onnx' : 'onnx/decode_latent.onnx';
         rtDecodeSession = await ort.InferenceSession.create(decoderPath);
         rtNcaSession = await ort.InferenceSession.create('onnx/nca_step.onnx');
+        // Load projection if available
+        if (useProjection) {{
+            rtProjectionSession = await ort.InferenceSession.create('onnx/projection.onnx');
+        }}
     }}
 
     async function rtEncodeAndUpdateWeights(specImg) {{
@@ -2193,10 +2246,19 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
         const tensor = new ort.Tensor('float32', input, [1, rtEncoderInputChannels, rtHeight, rtWidth]);
         const encResult = await rtEncodeSession.run({{ spectrogram: tensor }});
-        const z = encResult.z.data;
+        let z = encResult.z.data;
+
+        // Apply projection if available (maps encoder latent to decoder latent space)
+        if (rtProjectionSession) {{
+            const zSrcTensor = new ort.Tensor('float32', z, [1, rtLatentDim]);
+            const projResult = await rtProjectionSession.run({{ z_source: zSrcTensor }});
+            z = projResult.z_target.data;
+        }}
 
         // Decode z -> NCA weights (but NOT grid - grid is preserved)
-        const zTensor = new ort.Tensor('float32', z, [1, rtLatentDim]);
+        // Note: if projection was used, z is now in target latent space
+        const decoderLatentDim = rtProjectionSession ? z.length : rtLatentDim;
+        const zTensor = new ort.Tensor('float32', z, [1, decoderLatentDim]);
         const decResult = await rtDecodeSession.run({{ z: zTensor }});
 
         // Update cached params ONLY (grid state preserved)
@@ -2345,7 +2407,8 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
                 if (!rtEncodeSession) {{
                     rtMicStatus.textContent = 'Loading models...';
                     const useRtDecoder = rtManifest.rt_decoder_available || false;
-                    await rtLoadModels(useRtDecoder);
+                    const useProjection = rtManifest.projection_available || false;
+                    await rtLoadModels(useRtDecoder, useProjection);
                 }}
 
                 // Init microphone
@@ -2436,6 +2499,10 @@ def main():
         "--realtime-checkpoint", type=str, default=None,
         help="Optional second checkpoint for realtime audio decoder (uses its hypernetwork while main checkpoint provides encoder)"
     )
+    parser.add_argument(
+        "--projection", type=str, default=None,
+        help="Optional projection checkpoint to map encoder latent to decoder latent space"
+    )
     args = parser.parse_args()
 
     # For GitHub Pages, default output to repo root
@@ -2461,14 +2528,24 @@ def main():
 
     # Load optional realtime decoder model
     realtime_model = None
+    rt_cfg = None
     if args.realtime_checkpoint:
         print(f"  Loading realtime decoder from {args.realtime_checkpoint}...")
         realtime_model, rt_cfg, _ = load_model(args.realtime_checkpoint, args.device)
-        # Verify compatibility
-        if rt_cfg["latent_dim"] != cfg["latent_dim"]:
+        # Verify compatibility (unless projection will bridge them)
+        if rt_cfg["latent_dim"] != cfg["latent_dim"] and not args.projection:
             print(f"  WARNING: Latent dim mismatch ({rt_cfg['latent_dim']} vs {cfg['latent_dim']})")
+            print(f"           Consider using --projection to bridge latent spaces")
         if rt_cfg["grid_channels"] != cfg["grid_channels"]:
             print(f"  WARNING: Grid channels mismatch ({rt_cfg['grid_channels']} vs {cfg['grid_channels']})")
+
+    # Load optional projection layer
+    projection_info = None
+    if args.projection:
+        print(f"  Loading projection from {args.projection}...")
+        proj_wrapper, src_dim, tgt_dim = load_projection(args.projection, device)
+        projection_info = (proj_wrapper, src_dim, tgt_dim)
+        print(f"  Projection: {src_dim} → {tgt_dim}")
 
     dataset = None
     latents = []
@@ -2498,16 +2575,18 @@ def main():
 
     # 1d. Export ONNX models
     print("\n[4/8] Exporting ONNX models...")
-    has_rt_decoder = export_onnx_models(model, cfg, device, output_dir, realtime_model)
+    has_rt_decoder, has_projection = export_onnx_models(
+        model, cfg, device, output_dir, realtime_model, projection_info
+    )
 
     # 1e. Export data
     if args.github_pages:
         print("\n[5/8] Exporting manifest (GitHub Pages mode, no sequences)...")
-        export_data_github_pages(instrument_embeddings, cfg, output_dir, has_rt_decoder)
+        export_data_github_pages(instrument_embeddings, cfg, output_dir, has_rt_decoder, has_projection)
     else:
         n = len(latents)
         print(f"\n[5/8] Exporting data ({n} sequences)...")
-        export_data(dataset, latents, instrument_embeddings, cfg, output_dir, args.max_sequences, has_rt_decoder)
+        export_data(dataset, latents, instrument_embeddings, cfg, output_dir, args.max_sequences, has_rt_decoder, has_projection)
 
     # 1f. Copy static assets (groundtruth GIFs, etc.)
     print("\n[6/8] Copying static assets...")
