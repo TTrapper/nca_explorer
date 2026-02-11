@@ -1265,15 +1265,12 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
 
     function renderGtCanvas() {{
         if (GITHUB_PAGES || !gtData || !gtCtx) return;
-        const offset = (contextFramesCount + currentFrameIdx) * height * width * channels;
-        const end = offset + height * width * channels;
-        if (end > gtData.length) {{
-            // Past the end — black
-            const pixels = new Uint8Array(height * width * channels);
-            renderFrame(gtCtx, gtCanvas, pixels, width, height, channels);
-            return;
-        }}
-        const pixels = gtData.subarray(offset, end);
+        const frameSize = height * width * channels;
+        const totalFrames = Math.floor(gtData.length / frameSize);
+        // Clamp to last available frame instead of showing black
+        const frameIdx = Math.min(contextFramesCount + currentFrameIdx, totalFrames - 1);
+        const offset = frameIdx * frameSize;
+        const pixels = gtData.subarray(offset, offset + frameSize);
         renderFrame(gtCtx, gtCanvas, pixels, width, height, channels);
     }}
 
