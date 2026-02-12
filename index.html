@@ -6,7 +6,7 @@
     <title>Neuromusical Cellular Automata</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
@@ -17,13 +17,14 @@
             padding: 20px;
         }
         h1 {
-            font-family: 'Orbitron', sans-serif;
-            font-size: 2.8em;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1.8em;
             color: #4fc3f7;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             text-align: center;
             letter-spacing: 2px;
-            text-shadow: 0 0 20px rgba(79, 195, 247, 0.3);
+            line-height: 1.5;
+            text-shadow: 0 0 20px rgba(79, 195, 247, 0.4);
         }
         .subtitle { color: #888; text-align: center; margin-bottom: 20px; }
 
@@ -420,7 +421,7 @@
         <div class="article">
             <hr>
             
-            <p>The demo above <em>generates</em> a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint, and facilitating the exploratin of an embeddings space of NCAs through music.</p>
+            <p>The demo above <em>generates</em> a unique Neural Cellular Automaton for each sound you play. The NCA runs in real-time, creating evolving patterns based on the audio's spectral fingerprint, and facilitates the exploration of an embeddings space of NCAs through music.</p>
             
             
             <h2>How to Play</h2>
@@ -435,7 +436,7 @@
             
             <h2>Gallery</h2>
             
-            <p>Here are some examples of intersting stable patters you might find the in the space of Neuromusical Cellular Automata. Set the <strong>Perturbation</strong> level high or use to the <strong>Random Latent</strong> button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!</p>
+            <p>Here are some examples of beautiful self-stabilizing patterns found in the space of Neuromusical Cellular Automata. Set the <strong>Perturbation</strong> level high or use to the <strong>Random Latent</strong> button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!</p>
             
             <table class="gallery-table">
             <tr>
@@ -458,7 +459,7 @@
             
             <h3>Random NCAs</h3>
             
-            <p>In contrast to the above NCA's sampled from a learned latent space (so that we are navigating a particularly interesting and beautiful region of NCA parameter space), most of NCA space is more boring and tends to collapse to blank or static patterns:</p>
+            <p>In contrast to the above NCAs sampled from a learned latent space (so that we are navigating a particularly interesting and beautiful region of NCA parameter space), most of NCA space is more boring and tends to collapse to blank or static patterns:</p>
             
             <table class="gallery-table">
             <tr>
@@ -472,24 +473,25 @@
             
             <h2>Why This Project</h2>
             
-            <p>I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but predicatbly most setups were duds.</p>
+            <p>I have always been fascinated by neural cellular automata (and CAs in general) as they are like little physics engines for tiny virtual universes. So when I started this project I spun up a little NCA editor where I could adjust the architecture and parameter weights of NCAs to explore the space. I found some pretty neat settings, but it turns out to be pretty difficult to find anything interesting by randomly navigating parameter space!</p>
             
             <p>This got me thinking about the embeddings space of NCA parameters, and how we could explore it. To get a smoother and hopefully more interesting embedding space, I decided to train a neural network to <em>generate</em> NCA parameters from a conditioned latent space.</p>
             
-            <p>In this way, I've ended up with a neural network that generates neural networks from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the embedding space, which is very fun.</p>
+            <p>In this way, I've ended up with a neural network (a hypernetwork) that generates neural networks (NCAs) from a latent space, how cool! Being a musician, I eventually came to the idea of constraining the encoder to the space of musical notes from various instruments, which allows us to use music to explore the embedding space, which is very fun.</p>
             
             <h2>Cellular Automata</h2>
             
             <p>Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.</p>
             
-            <p>Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules. There are 9 cells in a neighborhood and the 1 center cell's new state ,which gives us 2^10 (1024) entries per rule. Each entry maps the 9-cell states at time <em>t</em> to the center cell's state at time <em>t+1</em>. The rule is then convolved over the entire grid to get the new state at each time step.</p>
+            <p>Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules (there are 9 cells in a neighborhood + the center cell's new state, which gives us 2^10 (1024) entries per rule). Each entry maps the 9-cell states at time <em>t</em> to the center cell's state at time <em>t+1</em>.</p>
             
             <div class="article-img"><img src="assets/rainbow_gliders.gif" alt="Rainbow Gliders" style="width: 512px; height: 512px;" /></div>
             
             <p><strong>Neural Cellular Automata (NCA)</strong> replace the discrete update rules of CAs with a small neural network, allowing the system to learn its own dynamics from data. A neural network reads local values and outputs updated values for the next time step, which is fed back into the network at time <em>t+1</em>. This makes an NCA effectively a recurrent CNN! NCAs can learn to grow, regenerate, and sustain surprisingly complex dynamical patterns.</p>
             
-            <p>The space of all possible NCAs is infinite, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).</p>
+            <p>The space of all possible NCAs is infinite*, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).</p>
             
+            <p>*<em>While the number of possible NCA architectures is truly unbounded (we can always add another layer), the number of distinguishable transition functions is finite: the inputs and outputs are encoded with finite-precision floating point. Many different architectures and parameter settings will produce identical behavior. The space is astronomically vast but ultimately discrete, appearing continuous to us.</em></p>
             
             <hr>
             
@@ -529,9 +531,7 @@
             
             <h2>Learned Latent Space</h2>
             
-            <p>Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to <em>generate</em> NCAs. And that's what the Neuromusical Cellular Automata does:</p>
-            
-            <p>This architecture uses a <strong>variational autoencoder (VAE)</strong> to map context frames into a low-dimensional latent space. A <strong>hypernetwork</strong> then transforms each latent vector into a unique set of NCA weights. This means every point in the latent space corresponds to a different cellular automaton with its own dynamics.</p>
+            <p>Instead of exploring the embedding space of random parameter values, we can learn a latent space and use that to <em>generate</em> NCAs. And that's what the Neuromusical Cellular Automata does.</p>
             
             <p>Because this latent space is learned it can be much smoother and more semantically meaningful than exploring the raw space of NCA parameters. Of course, what the latent space actually learns is entirely dependent on the data used to train the model.</p>
             
@@ -555,15 +555,15 @@
             
             <p>The training data for the Neuromusical Cellular Automata and the demo at the top of this page is generated by pairing audio with deterministic visualizations.</p>
             
-            <div class="article-img"><img src="assets/spectrogram_piano.gif" alt="Ground Truth Example 1" style="width: 512px; height: 256px;" /></div>
+            <div class="article-img"><img src="assets/spectrogram_piano.gif" alt="Ground Truth Example 1" style="width: 768px; height: 256px;" /></div>
             
             <p>For each instrument sample (piano, violin, etc.), we extract audio features: detected harmonics, loudness (RMS), and spectral brightness. These features drive the "circles" visualization where each harmonic becomes a colored circle - low frequencies appear warm (red/orange) near the center, high frequencies appear cool (blue) toward the edges. Circle size pulses with loudness, and positions orbit based on harmonic relationships.</p>
             
-            <div class="article-img"><img src="assets/spectrogram_xylophone.gif" alt="Ground Truth Example 2" style="width: 512px; height: 256px;" /></div>
+            <div class="article-img"><img src="assets/spectrogram_xylophone.gif" alt="Ground Truth Example 2" style="width: 768px; height: 256px;" /></div>
             
             <p>The first frame of each training sequence is a <strong>mel spectrogram</strong> (a 2D image of frequency vs. time), which the encoder compresses into a 64-dimensional latent vector. The decoder, a hypernetwork, transforms this latent into NCA weights that generate the subsequent circle animation frames.</p>
             
-            <div class="article-img"><img src="assets/spectrogram_clarinet.gif" alt="Ground Truth Example 3" style="width: 512px; height: 256px;" /></div>
+            <div class="article-img"><img src="assets/spectrogram_clarinet.gif" alt="Ground Truth Example 3" style="width: 768px; height: 256px;" /></div>
             
             <p>For the piano interface, we pre-generate spectrograms for all 19 notes (F4 through B5) across every instrument. Each spectrogram is encoded into its latent vector and stored in a manifest. When you press a piano key, the corresponding latent is loaded; pressing multiple keys (a chord) averages their latents together. This blended latent then generates the NCA in real-time, creating visualizations that interpolate between the learned behaviors of each note.</p>
             
@@ -575,14 +575,13 @@
             
             <ul>
             <li><strong>Encoder:</strong> From the spectrogram-to-NCA model used in the piano demo above</li>
-            <li><strong>Hypernetwork:</strong> From a new model trained to generate emoji (or rather to <em>generate NCAs</em> which generate emoji</li>
+            <li><strong>Hypernetwork:</strong> From a new model trained to generate emoji (or rather to <em>generate NCAs</em> which generate emoji)</li>
             </ul>
             
             <p>The idea is to explore whether we can use music and sound to navigate the space of possible NCAs, even when the hypernetwork wasn't jointly trained with spectrograms. Your microphone audio gets converted to a spectrogram, encoded to a latent vector, and that latent drives the emoji NCA's dynamics in real-time.</p>
             
             <p>
         <div class="rt-section" id="realtimeAudioSection">
-            <h2>Real-Time Audio</h2>
             <p class="rt-subtitle">Try making sounds with different textures: humming, clapping, whistling, or playing different instruments. Each sound creates a unique spectrogram that drives the NCA dynamics.</p>
 
             <div class="rt-container">
@@ -599,21 +598,20 @@
 
                 <div class="rt-controls">
                     <button id="rtEnableMicBtn">Enable Microphone</button>
-                    <button id="rtResetGridBtn" disabled>Reset Grid</button>
                     <span id="rtMicStatus"></span>
                 </div>
                 <div class="rt-controls" style="margin-top: 10px;">
                     <label for="rtSampleRateSlider" style="color: #aaa; font-size: 0.9em;">Sample Rate:</label>
-                    <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="500" style="width: 120px;">
-                    <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">500ms</span>
+                    <input type="range" id="rtSampleRateSlider" min="100" max="3000" value="1500" style="width: 120px;">
+                    <span id="rtSampleRateValue" style="color: #4fc3f7; font-family: monospace; min-width: 50px;">1500ms</span>
                 </div>
             </div>
         </div>
 </p>
             
-            <p>You're unlikely to find any recognizable emoji in the above demo. The spectrogram encoder's latent space doesn't match what the emoji hypernetwork expects. In the future, I'd like to try aligning the two embedding spaces and see if we can produce actual images from the music!</p>
+            <p>With enough experimentation it's possible to find recognizable emoji in the above demo. The spectrogram encoder's latent space doesn't match what the emoji hypernetwork expects, but I trained a simple MLP to project between the manifolds of the two latent spaces. I'd like to experiment with different methods to make the projection more obviously meaningful (but we'd likely need networks powerful enough to actually <em>represent</em> that meaning).</p>
             
-            <p>Still, what makes this interesting is that we're navigating a structured region of NCA parameter space. The hypernetwork constrains the outputs to "plausible" cellular automata, and the audio encoder provides a consistent way to explore that space. Different sounds produce different dynamics, and you can discover regularities. For example, cleaner pure tones tend to make more stable structures where as disonance and noise result in more chaotic patterns!</p>
+            <p>Still, what makes this interesting is that we're navigating a structured region of NCA parameter space. The hypernetwork constrains the outputs to "plausible" cellular automata, and the audio encoder provides a consistent way to explore that space. Different sounds produce different dynamics, and you <em>can</em> discover regularities.</p>
             
             
             <p>For reference, here's what the hypernetwork (and its generated NCAs) produces with its matching encoder:</p>
@@ -629,20 +627,19 @@
             <p>This approach opens several interesting directions:</p>
             
             <ul>
-            <li>The latent space could be conditioned on higher-level descriptions, allowing <strong>natural language control</strong> over the generated dynamics</li>
-            <li>Larger grids and deeper NCA architectures could capture more complex phenomena</li>
+            <li>The latent space could be conditioned on higher-level concepts, allowing semantic control over the generated dynamics</li>
+            <li>Larger grids and deeper NCAs, and more interesting training data could capture more complex phenomena</li>
             <li>The ability for NCAs to track/produce <strong>agentic behavior</strong> on the grid is particularly fascinating</li>
+            <li>Visualizing and analyzing the <strong>hidden channels</strong> of the NCA grid to find out more about how the visible RGB channels are computed, which would be especially interesing in the case of agentic behavior</li>
             </ul>
             
             <h3>Agentic behavior</h3>
-            <p>I did some early experiments with boids exhibiting various behaviors such as flocking or predator-prey dynamics, but this proved too challenging for my tiny 2-layer conv nets. It would be fascinating to see if an NCA could learn theory of mind to generate the actions of human players in Atari games, or even more complex environments and life-like behaviors.</p>
+            <p>I did some early experiments with boids exhibiting various behaviors such as flocking or predator-prey dynamics, but this proved too challenging for my tiny 2-layer conv nets. It would be fascinating to see if an NCA could learn theory of mind to generate the behaviors of simple agents. A more ambitious goal would be to model human player actions in Atari games, or even more complex environments and life-like behaviors from nature itself.</p>
             
             <h3>Sound as Navigation</h3>
-            <p>Broadly, music offers a compelling interface for exploring high-dimensional latent spaces. The simple circle visualizations here map audio features to color and motion, but richer correspondences are possible. We could learn a shared embedding where the space of complex music aligns with the space of natural images or video, not through superficial features, but through deeper semantic structure: tension and resolution in a symphony mapping to dramatic arcs in film, the texture of a jazz improvisation corresponding to the organic chaos of a forest canopy, or the emotional trajectory of a song finding its visual analogue in shifting landscapes.</p>
+            <p>Broadly, music offers a compelling interface for exploring high-dimensional latent spaces. The simple visualizations used here map audio features to color and motion, but richer correspondences are possible. We could learn a deeper semantic structure: tension and resolution in a symphony, the texture of a jazz improvisation, or the chaos of city and forest soundscapes all provide meaningful ways of steering through latent space.</p>
             
-            <p>Contrastive learning on large audio-visual datasets could discover these cross-modal correspondences, letting music become a navigation tool for exploring generative models of images, video, or even text, playing a melody to traverse a space of scenes that feel emotionally consonant with the sound.</p>
-            
-            <h3>Endless Possibility</h3>
+            <h3>Open Ended</h3>
             <p>The combination of neural cellular automata with learned latent spaces suggests a fascinating paradigm: compact, local update rules that are themselves generated by a learned model, producing an open-ended family of emergent systems from a single trained network.</p>
             
             <hr>
@@ -1362,8 +1359,15 @@
 
             const workerScript = await ensureGifWorker();
             gifIncludeSpectrogram = hasSpectrogram();
-            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
-            const gifWidth = sideBySide ? gifSize * 2 : gifSize;
+            // Sequence mode: context + NCA + GT (3 panels)
+            // Spectrogram mode: spec + NCA (2 panels)
+            // Free mode: NCA only (1 panel)
+            let gifWidth = gifSize;
+            if (currentMode === 'sequence') {
+                gifWidth = gifSize * 3;  // context | NCA | GT
+            } else if (gifIncludeSpectrogram) {
+                gifWidth = gifSize * 2;
+            }
             gifEncoder = new GIF({
                 workers: 2,
                 quality: 10,
@@ -1379,14 +1383,24 @@
         captureGifFrame = function() {
             if (!isRecording || !gifEncoder) return;
             const offscreen = document.createElement('canvas');
-            const sideBySide = currentMode === 'sequence' || gifIncludeSpectrogram;
-            offscreen.width = sideBySide ? gifSize * 2 : gifSize;
+            let gifWidth = gifSize;
+            if (currentMode === 'sequence') {
+                gifWidth = gifSize * 3;
+            } else if (gifIncludeSpectrogram) {
+                gifWidth = gifSize * 2;
+            }
+            offscreen.width = gifWidth;
             offscreen.height = gifSize;
             const octx = offscreen.getContext('2d');
 
             if (currentMode === 'sequence') {
-                octx.drawImage(ncaCanvas, 0, 0, gifSize, gifSize);
-                octx.drawImage(gtCanvas, gifSize, 0, gifSize, gifSize);
+                // Draw last context frame on the left
+                const lastContextCanvas = contextCanvases[contextCanvases.length - 1];
+                if (lastContextCanvas) {
+                    octx.drawImage(lastContextCanvas, 0, 0, gifSize, gifSize);
+                }
+                octx.drawImage(ncaCanvas, gifSize, 0, gifSize, gifSize);
+                octx.drawImage(gtCanvas, gifSize * 2, 0, gifSize, gifSize);
             } else if (gifIncludeSpectrogram) {
                 const specImg = document.getElementById('specImg');
                 octx.drawImage(specImg, 0, 0, gifSize, gifSize);
@@ -1551,7 +1565,7 @@
 
     // Timing
     let rtLastEncoderRun = 0;
-    let rtEncoderThrottleMs = 500;  // Updated by slider
+    let rtEncoderThrottleMs = 1500;  // Updated by slider
     let rtRunning = false;
 
     // Canvas refs
@@ -1722,6 +1736,7 @@
             z = projResult.z_target.data;
         }
 
+
         // Decode z -> NCA weights (but NOT grid - grid is preserved)
         // Note: if projection was used, z is now in target latent space
         const decoderLatentDim = rtProjectionSession ? z.length : rtLatentDim;
@@ -1735,7 +1750,35 @@
             layer2_w: decResult.layer2_w,
             layer2_b: decResult.layer2_b,
         };
-        // Note: decResult.first_frame is ignored - we don't reset the grid
+
+        // Gradually blend current grid toward new first_frame
+        const gridSize = rtGridChannels * rtHeight * rtWidth;
+        const imgSize = rtChannels * rtHeight * rtWidth;
+        const hiddenSize = gridSize - imgSize;
+
+        const firstFrame = decResult.first_frame.data;
+        const blendRate = 1.0;  // How fast to blend (0 = no change, 1 = instant)
+
+        if (!rtNcaFrame) {
+            // First time - initialize directly
+            rtNcaFrame = new Float32Array(imgSize);
+            for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = firstFrame[i];
+        } else {
+            // Blend toward new state
+            for (let i = 0; i < imgSize; i++) {
+                rtNcaFrame[i] = rtNcaFrame[i] * (1 - blendRate) + firstFrame[i] * blendRate;
+            }
+        }
+
+        if (!rtHidden) {
+            rtHidden = new Float32Array(hiddenSize);
+            for (let i = 0; i < hiddenSize; i++) rtHidden[i] = firstFrame[imgSize + i];
+        } else {
+            for (let i = 0; i < hiddenSize; i++) {
+                rtHidden[i] = rtHidden[i] * (1 - blendRate) + firstFrame[imgSize + i] * blendRate;
+            }
+        }
+        rtGrid = true;
     }
 
     async function rtStepNca() {
@@ -1768,23 +1811,6 @@
         for (let i = 0; i < hiddenSize; i++) {
             rtHidden[i] = Math.tanh(raw[imgSize + i]);
         }
-    }
-
-    function rtRandomizeGrid() {
-        // Fill grid with random noise (keeps current z and NCA weights)
-        const imgSize = rtChannels * rtHeight * rtWidth;
-        const hiddenSize = rtGridChannels * rtHeight * rtWidth - imgSize;
-
-        // Random RGB values in [0, 1]
-        if (!rtNcaFrame) rtNcaFrame = new Float32Array(imgSize);
-        for (let i = 0; i < imgSize; i++) rtNcaFrame[i] = Math.random();
-
-        // Random hidden values (small, like tanh range)
-        if (!rtHidden) rtHidden = new Float32Array(hiddenSize);
-        for (let i = 0; i < hiddenSize; i++) rtHidden[i] = (Math.random() - 0.5) * 0.2;
-
-        // Set rtGrid flag so rtStepNca knows grid is initialized
-        rtGrid = true;
     }
 
     async function rtInitGrid() {
@@ -1843,7 +1869,6 @@
     // UI Event Handlers
     // -----------------------------------------------------------------------
     const rtEnableMicBtn = document.getElementById('rtEnableMicBtn');
-    const rtResetGridBtn = document.getElementById('rtResetGridBtn');
     const rtMicStatus = document.getElementById('rtMicStatus');
 
     if (rtEnableMicBtn) {
@@ -1859,7 +1884,6 @@
                 rtEnableMicBtn.textContent = 'Enable Microphone';
                 rtEnableMicBtn.classList.remove('active');
                 rtMicStatus.textContent = '';
-                rtResetGridBtn.disabled = true;
                 return;
             }
 
@@ -1909,7 +1933,6 @@
                 rtEnableMicBtn.classList.add('active');
                 rtMicStatus.textContent = 'Active';
                 rtMicStatus.classList.remove('error');
-                rtResetGridBtn.disabled = false;
 
                 rtMicrophoneLoop();
             } catch (e) {
@@ -1922,13 +1945,6 @@
         });
     }
 
-    if (rtResetGridBtn) {
-        rtResetGridBtn.addEventListener('click', () => {
-            if (!rtNcaFrame) return;
-            rtRandomizeGrid();
-        });
-    }
-
     // Sample rate slider
     const rtSampleRateSlider = document.getElementById('rtSampleRateSlider');
     const rtSampleRateValue = document.getElementById('rtSampleRateValue');
@@ -1938,6 +1954,7 @@
             rtSampleRateValue.textContent = rtEncoderThrottleMs + 'ms';
         });
     }
+
 
     })();
     </script>
