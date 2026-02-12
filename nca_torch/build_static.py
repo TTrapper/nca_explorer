@@ -326,7 +326,7 @@ def load_projection(projection_path: str, device: torch.device):
     state_dict = ckpt["projection_state_dict"]
     mode = ckpt.get("mode", "distribution")
 
-    if mode == "ot":
+    if mode in ("ot", "gw"):
         # MLP projection - infer hidden dim from state dict
         hidden_dim = state_dict["net.0.weight"].shape[0]
         print(f"    MLP projection (hidden={hidden_dim})")
