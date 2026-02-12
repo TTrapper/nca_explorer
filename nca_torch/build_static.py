@@ -810,7 +810,7 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
     <title>Neuromusical Cellular Automata</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@700&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
     <style>
         * {{ margin: 0; padding: 0; box-sizing: border-box; }}
         body {{
@@ -821,13 +821,14 @@ def _build_html(cfg, article_html: str = "", github_pages: bool = False):
             padding: 20px;
         }}
         h1 {{
-            font-family: 'Orbitron', sans-serif;
-            font-size: 2.8em;
+            font-family: 'Press Start 2P', cursive;
+            font-size: 1.8em;
             color: #4fc3f7;
-            margin-bottom: 10px;
+            margin-bottom: 15px;
             text-align: center;
             letter-spacing: 2px;
-            text-shadow: 0 0 20px rgba(79, 195, 247, 0.3);
+            line-height: 1.5;
+            text-shadow: 0 0 20px rgba(79, 195, 247, 0.4);
         }}
         .subtitle {{ color: #888; text-align: center; margin-bottom: 20px; }}
 
