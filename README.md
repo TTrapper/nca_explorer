@@ -13,7 +13,7 @@ The demo above *generates* a unique Neural Cellular Automaton for each sound you
 
 ## Gallery
 
-Here are some examples of beautiful self-stabilizing patterns found in the space of Neuromusical Cellular Automata. Set the **Perturbation** level high or use to the **Random Latent** button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!
+Here are some examples of beautiful self-stabilizing patterns found in the space of Neuromusical Cellular Automata. Set the **Perturbation** level high or use the **Random Latent** button to discover more. You'll see interesting smokey fluid dynamics, shifting colors, and even shapes that appear to be swirling in 3D!
 
 | | | |
 |:---:|:---:|:---:|
@@ -44,7 +44,7 @@ In this way, I've ended up with a neural network (a hypernetwork) that generates
 
 Cellular automata are systems of simple cells on a grid, each updating its state based on neighboring values. Classic examples like Conway's Game of Life show how complex global behavior can emerge from purely local rules.
 
-Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example a binary CA where the update rule depends on the Moore neighborhood has 2^1024 possible rules (there are 9 cells in a neighborhood + the center cell's new state, which gives us 2^10 (1024) entries per rule). Each entry maps the 9-cell states at time *t* to the center cell's state at time *t+1*.
+Whereas Conway's Game of Life is the application of one possible update rule, we can think of the space of all possible rules as the set of all state transition functions for a given neighborhood, which could be listed in a (beyond astronomically massive) lookup table. For example, a binary CA with a Moore neighborhood (8 neighbors + center = 9 cells) has 2^9 = 512 possible input configurations. Each rule maps these 512 configurations to a binary output, giving 2^512 possible rules.
 
 ![Rainbow Gliders|512x512](assets/rainbow_gliders.gif)
 
@@ -52,7 +52,7 @@ Whereas Conway's Game of Life is the application of one possible update rule, we
 
 The space of all possible NCAs is infinite*, even for a constrained neighborhood, because there are an infinite number of neural network architectures we could apply. For a fixed architecture, we can think of the "embedding space" of all possible parameter values. Typically, this space is pretty sparse and boring, producing mostly noise or blank outputs (although I did randomly stumble upon the "rainbow gliders" shown above - stable little colorful blobs that move!).
 
-**While the number of possible NCA architectures is truly unbounded (we can always add another layer), the number of distinguishable transition functions is finite: the inputs and outputs are encoded with finite-precision floating point. Many different architectures and parameter settings will produce identical behavior. The space is astronomically vast but ultimately discrete, appearing continuous to us.*
+**While the number of possible NCA architectures is truly unbounded (we can always add another layer), the number of distinguishable transition functions is finite: the inputs and outputs are encoded with finite-precision floating point. Many different architectures and parameter settings will produce identical behavior. The space is astronomically vast but ultimately discrete, only appearing continuous to us.*
 
 ---
 
@@ -153,7 +153,7 @@ For reference, here's what the hypernetwork (and its generated NCAs) produces wi
 This approach opens several interesting directions:
 
 - The latent space could be conditioned on higher-level concepts, allowing semantic control over the generated dynamics
-- Larger grids and deeper NCAs, and more interesting training data could capture more complex phenomena
+- Larger grids, deeper NCAs, and better training data could capture more complex phenomena
 - The ability for NCAs to track/produce **agentic behavior** on the grid is particularly fascinating
 - Visualizing and analyzing the **hidden channels** of the NCA grid to find out more about how the visible RGB channels are computed, which would be especially interesing in the case of agentic behavior
 
@@ -161,7 +161,7 @@ This approach opens several interesting directions:
 I did some early experiments with boids exhibiting various behaviors such as flocking or predator-prey dynamics, but this proved too challenging for my tiny 2-layer conv nets. It would be fascinating to see if an NCA could learn theory of mind to generate the behaviors of simple agents. A more ambitious goal would be to model human player actions in Atari games, or even more complex environments and life-like behaviors from nature itself.
 
 ### Sound as Navigation
-Broadly, music offers a compelling interface for exploring high-dimensional latent spaces. The simple visualizations used here map audio features to color and motion, but richer correspondences are possible. We could learn a deeper semantic structure: tension and resolution in a symphony, the texture of a jazz improvisation, or the chaos of city and forest soundscapes all provide meaningful ways of steering through latent space.
+Broadly, music and sound offer a compelling interface for exploring high-dimensional latent spaces. The simple visualizations used here map audio features to color and motion, but richer correspondences are possible. We could learn a deeper semantic structure: tension and resolution in a symphony, the texture of a jazz improvisation, or the chaos of city and forest soundscapes all provide meaningful ways of steering through latent space.
 
 ### Open Ended
 The combination of neural cellular automata with learned latent spaces suggests a fascinating paradigm: compact, local update rules that are themselves generated by a learned model, producing an open-ended family of emergent systems from a single trained network.
@@ -170,7 +170,7 @@ The combination of neural cellular automata with learned latent spaces suggests 
 
 ## Bonus: Game of Life
 
-As an experiment, I trained the same NCA architecture on Conway's Game of Life—a cellular automaton that is famously Turing complete. The NCA successfully learned to emulate the Game of Life rules, correctly simulating gliders, oscillators, and chaotic patterns.
+As an experiment, I trained the same NCA architecture on Conway's Game of Life, a cellular automaton that is famously Turing complete. The NCA successfully learned to emulate the Game of Life rules, correctly simulating gliders, oscillators, and chaotic patterns.
 
 ![GoL Example 2|512x256](assets/gol2.gif)
 ![GoL Example 3|512x256](assets/gol3.gif)
